@@ -1,0 +1,2281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Merge Physics Short Studio — Mobile MP4 &amp; WebM + 50 SFX</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      background: #09090d;
+      color: #f1f5f9;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      overflow-x: hidden;
+    }
+    .stage-frame {
+      aspect-ratio: 9 / 16;
+      max-height: calc(100vh - 10rem);
+      width: auto;
+      max-width: 100%;
+    }
+    @media (min-width: 1024px) {
+      .stage-frame {
+        max-height: calc(100vh - 3.5rem);
+      }
+    }
+    canvas#shortCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: pointer;
+    }
+    input[type="range"] {
+      accent-color: #38bdf8;
+    }
+    @keyframes recPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(0.8); }
+    }
+    .rec-dot {
+      animation: recPulse 0.9s ease-in-out infinite;
+    }
+    .panel-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .panel-scroll::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.25);
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-[#09090d] text-slate-100 flex flex-col lg:flex-row items-center justify-center gap-4 lg:gap-8 p-3 sm:p-5">
+
+  <!-- 9:16 Vertical Stage -->
+  <main class="relative flex items-center justify-center flex-shrink-0">
+    <div id="stageWrapper" class="stage-frame relative rounded-2xl overflow-hidden bg-[#121216] shadow-[0_0_50px_rgba(99,102,241,0.16)] ring-1 ring-white/15">
+      <canvas id="shortCanvas" width="720" height="1280" aria-label="Merge Physics Short Canvas"></canvas>
+
+      <!-- Live Recording Badge (DOM overlay only - excluded from video capture) -->
+      <div id="recBadge" class="hidden absolute top-3 left-3 z-20 flex items-center gap-2 px-2.5 py-1 rounded-full bg-red-600/90 text-white text-xs font-semibold tracking-wide shadow-lg backdrop-blur-sm">
+        <span class="rec-dot w-2 h-2 rounded-full bg-white"></span>
+        <span id="recBadgeText">REC 00.0s</span>
+      </div>
+
+      <!-- Tap for Audio Hint -->
+      <button id="audioUnlockBanner" type="button" class="absolute top-3 left-3 z-10 px-2.5 py-1 rounded-full bg-black/70 hover:bg-black/85 border border-white/15 text-[11px] font-semibold text-amber-300 backdrop-blur-sm transition flex items-center gap-1.5">
+        <span>🔊</span>
+        <span>Tap to enable sound</span>
+      </button>
+
+      <!-- Format Pill -->
+      <div class="pointer-events-none absolute top-3 right-3 z-10 px-2 py-0.5 rounded-md bg-black/55 border border-white/10 text-[11px] font-medium text-slate-300 backdrop-blur-sm">
+        9:16 · 720×1280
+      </div>
+    </div>
+  </main>
+
+  <!-- Studio Control Panel -->
+  <aside class="panel-scroll w-full max-w-md lg:w-96 lg:max-h-[calc(100vh-2.5rem)] lg:overflow-y-auto bg-slate-900/85 border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-md shadow-2xl flex flex-col gap-3.5">
+    <header class="flex items-start justify-between gap-2">
+      <div>
+        <h1 class="text-base sm:text-lg font-bold tracking-tight text-white">Merge Physics Short Studio</h1>
+        <p class="text-xs text-slate-400 mt-0.5">Mobile MP4 &amp; WebM · 50 SFX · 13 Templates</p>
+      </div>
+      <div class="text-right">
+        <div id="mergeCounter" class="text-xs font-mono font-semibold text-cyan-300">0 merges</div>
+        <div id="highestTierLabel" class="text-[11px] text-slate-400">Best: T1</div>
+      </div>
+    </header>
+
+    <!-- Evolution Ladder & Per-Tier Custom PNG Slots -->
+    <section class="bg-slate-950/70 border border-white/5 rounded-xl p-2.5 flex flex-col gap-2">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Tiers (Tap any slot to override PNG)</span>
+        <span id="customPngCount" class="text-[10px] font-mono text-cyan-300">0/8 PNGs</span>
+      </div>
+      <div id="tierLadder" class="grid grid-cols-8 gap-1 select-none"></div>
+      <div class="flex items-center gap-2 pt-0.5">
+        <button id="bulkPngBtn" type="button" class="flex-1 px-2.5 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/30 text-[11px] font-semibold text-cyan-200 transition">
+          + Upload PNGs (T1–T8)
+        </button>
+        <button id="clearPngsBtn" type="button" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/10 text-[11px] font-semibold text-slate-300 transition">
+          Clear PNGs
+        </button>
+      </div>
+      <input id="singlePngInput" type="file" accept="image/png,image/webp,image/jpeg,image/gif" class="hidden" />
+      <input id="bulkPngInput" type="file" accept="image/png,image/webp,image/jpeg,image/gif" multiple class="hidden" />
+    </section>
+
+    <!-- Playback & Drop Controls -->
+    <section class="grid grid-cols-3 gap-2">
+      <button id="playPauseBtn" type="button" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white border border-white/10 transition">
+        ❚❚ Pause
+      </button>
+      <button id="dropNowBtn" type="button" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-white/10 transition">
+        + Drop
+      </button>
+      <button id="resetBtn" type="button" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-white/10 transition">
+        ↺ Reset
+      </button>
+    </section>
+
+    <!-- Pre-installed Templates & Customization -->
+    <section class="flex flex-col gap-3">
+      <div>
+        <label for="themeSelect" class="block text-xs font-medium text-slate-300 mb-1">Merge Template Pack (13 Pre-installed)</label>
+        <select id="themeSelect" class="w-full rounded-lg bg-slate-950 border border-white/10 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60">
+          <optgroup label="Tech, AI &amp; Brands">
+            <option value="companies">Company Logos (Spotify → Apple)</option>
+            <option value="aiModels">AI Models Logos (Perplexity → Gemini)</option>
+            <option value="phoneBrands">Phone Brands (Motorola → Apple)</option>
+            <option value="socialMedia">Social Media Apps (Snapchat → YouTube)</option>
+          </optgroup>
+          <optgroup label="Cars, Games &amp; Pop Culture">
+            <option value="anime">Anime Characters (Chopper → Zeno)</option>
+            <option value="carBrands">Car Brands (Toyota → Ferrari)</option>
+            <option value="carModels">Car Models (Civic → Jesko)</option>
+            <option value="games">Game Logos (Among Us → GTA VI)</option>
+            <option value="football">Football Clubs (Miami → Real Madrid)</option>
+            <option value="superheroes">Superheroes (Flash → Thanos)</option>
+          </optgroup>
+          <optgroup label="Emoji Packs">
+            <option value="animals" selected>Animal Evolution (🐣 → 👑)</option>
+            <option value="moods">Mood Chaos (🙂 → 👽)</option>
+            <option value="food">Food Feast (🍒 → 🏆)</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between text-xs mb-1">
+          <label for="dropRateSlider" class="font-medium text-slate-300">Drop Speed</label>
+          <span id="dropRateVal" class="font-mono text-cyan-300">0.38s</span>
+        </div>
+        <input id="dropRateSlider" type="range" min="0.15" max="1.10" step="0.01" value="0.38" class="w-full h-1.5 bg-slate-800 rounded-lg cursor-pointer" />
+      </div>
+
+      <div>
+        <label for="captionInput" class="block text-xs font-medium text-slate-300 mb-1">Bottom Hook Caption</label>
+        <input id="captionInput" type="text" value="Which emoji are you waiting for?" maxlength="52" class="w-full rounded-lg bg-slate-950 border border-white/10 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60" />
+      </div>
+    </section>
+
+    <!-- 50 Trending SFX Library + Custom Song -->
+    <section class="bg-slate-950/70 border border-white/5 rounded-xl p-3 flex flex-col gap-2.5">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">50 Built-in Trending SFX</span>
+        <button id="muteBtn" type="button" class="px-2 py-0.5 rounded bg-slate-900 hover:bg-slate-800 border border-white/10 text-[11px] font-semibold text-emerald-300 transition">
+          🔊 Sound On
+        </button>
+      </div>
+
+      <div class="flex items-center gap-1.5">
+        <select id="audioStyleSelect" aria-label="Select Merge SFX" class="flex-1 min-w-0 rounded-lg bg-slate-900 border border-white/10 px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60"></select>
+        <button id="testSfxBtn" type="button" title="Preview selected SFX" class="px-2.5 py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/30 text-xs font-semibold text-cyan-200 transition">
+          ▶
+        </button>
+        <button id="randomSfxBtn" type="button" title="Pick a random SFX from 50" class="px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/10 text-xs font-semibold text-amber-200 transition">
+          🎲
+        </button>
+      </div>
+
+      <!-- Custom Song -->
+      <div class="pt-2 border-t border-white/5 flex flex-col gap-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Custom Song (Background)</span>
+          <span id="songNameLabel" class="text-[11px] text-slate-400 truncate max-w-[140px]">No song</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="uploadSongBtn" type="button" class="flex-1 px-2.5 py-1.5 rounded-lg bg-fuchsia-500/15 hover:bg-fuchsia-500/25 border border-fuchsia-400/30 text-[11px] font-semibold text-fuchsia-200 transition">
+            🎵 Upload Song (MP3/WAV)
+          </button>
+          <button id="clearSongBtn" type="button" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/10 text-[11px] font-semibold text-slate-300 transition">
+            Clear
+          </button>
+          <input id="songFileInput" type="file" accept="audio/*" class="hidden" />
+        </div>
+        <div class="flex items-center gap-2">
+          <label for="songVolumeSlider" class="text-[11px] text-slate-400 whitespace-nowrap">Music Vol</label>
+          <input id="songVolumeSlider" type="range" min="0" max="1" step="0.05" value="0.65" class="flex-1 h-1.5 bg-slate-800 rounded-lg cursor-pointer" />
+          <span id="songVolumeVal" class="text-[11px] font-mono text-fuchsia-300 w-8 text-right">65%</span>
+        </div>
+
+        <div class="flex items-center justify-between gap-2">
+          <button id="uploadSfxBtn" type="button" class="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/10 text-[11px] font-semibold text-amber-200 transition truncate">
+            🎙️ Upload Custom Merge SFX
+          </button>
+          <button id="clearSfxBtn" type="button" class="hidden px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/10 text-[11px] font-semibold text-slate-300 transition">
+            ✕
+          </button>
+          <input id="sfxFileInput" type="file" accept="audio/*" class="hidden" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Dual Format Export: MP4 (Mobile & FB Reels) + WebM -->
+    <section class="flex flex-col gap-2.5 pt-2 border-t border-white/10">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-xs font-semibold text-slate-200">Export Format</span>
+        <span id="formatSupportBadge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-400/30">H.264 + AAC</span>
+      </div>
+
+      <!-- 2 Explicit Format Options -->
+      <div class="grid grid-cols-2 gap-2" id="formatToggleGroup">
+        <button id="fmtMp4Btn" type="button" data-fmt="mp4" class="px-2.5 py-2 rounded-xl border border-cyan-400 bg-cyan-500/20 text-cyan-200 text-xs font-bold transition flex flex-col items-center">
+          <span>📱 MP4 (H.264)</span>
+          <span class="text-[10px] font-normal text-cyan-300/80">Phone &amp; FB Reels</span>
+        </button>
+        <button id="fmtWebmBtn" type="button" data-fmt="webm" class="px-2.5 py-2 rounded-xl border border-white/10 bg-slate-950 text-slate-300 hover:border-white/25 text-xs font-bold transition flex flex-col items-center">
+          <span>🌐 WebM</span>
+          <span class="text-[10px] font-normal text-slate-400">VP9 / VP8 + Opus</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label for="recordModeSelect" class="block text-[10px] font-medium text-slate-400 mb-1">Stop Mode</label>
+          <select id="recordModeSelect" class="w-full rounded-lg bg-slate-950 border border-white/10 px-2 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60">
+            <option value="untilFinal" selected>Until Final Tier (+3s)</option>
+            <option value="custom">Custom Duration</option>
+          </select>
+        </div>
+        <div>
+          <label for="customDurationInput" class="block text-[10px] font-medium text-slate-400 mb-1">Seconds (5–300s)</label>
+          <input id="customDurationInput" type="number" min="5" max="300" step="5" value="60" class="w-full rounded-lg bg-slate-950 border border-white/10 px-2.5 py-2 text-xs font-mono text-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-400/60" />
+        </div>
+      </div>
+
+      <!-- Quick Duration Presets -->
+      <div class="grid grid-cols-4 gap-1.5" id="durationPresets">
+        <button type="button" data-sec="30" class="py-1 rounded-md bg-slate-800 hover:bg-slate-700 border border-white/10 text-[11px] font-mono text-slate-300 transition">30s</button>
+        <button type="button" data-sec="60" class="py-1 rounded-md bg-slate-800 hover:bg-slate-700 border border-white/10 text-[11px] font-mono text-slate-300 transition">60s</button>
+        <button type="button" data-sec="90" class="py-1 rounded-md bg-slate-800 hover:bg-slate-700 border border-white/10 text-[11px] font-mono text-slate-300 transition">90s</button>
+        <button type="button" data-sec="120" class="py-1 rounded-md bg-slate-800 hover:bg-slate-700 border border-white/10 text-[11px] font-mono text-slate-300 transition">120s</button>
+      </div>
+
+      <button id="recordBtn" type="button" class="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-fuchsia-500 via-cyan-400 to-emerald-400 hover:brightness-110 active:scale-[0.99] text-slate-950 font-bold text-xs sm:text-sm shadow-lg transition flex items-center justify-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-slate-950"></span>
+        <span id="recordBtnText">Record Mobile MP4 + Audio</span>
+      </button>
+
+      <div id="recProgressWrap" class="hidden w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+        <div id="recProgressBar" class="h-full bg-gradient-to-r from-fuchsia-400 to-cyan-400 transition-all duration-100" style="width: 0%;"></div>
+      </div>
+
+      <p id="statusToast" class="text-[11px] text-slate-400 leading-relaxed min-h-[1.25rem]">
+        MP4 mode uses H.264 Baseline + AAC with fastStart (moov-first) for Android, iPhone &amp; Facebook Reels.
+      </p>
+
+      <a id="downloadLink" href="#" download="merge-short.mp4" class="hidden text-center text-xs font-semibold text-cyan-300 hover:text-cyan-200 underline underline-offset-2">
+        Download Last Recorded Video
+      </a>
+    </section>
+  </aside>
+
+  <script>
+    (function () {
+      'use strict';
+
+      // ============================================================
+      // 1. CONSTANTS & 13 PRE-INSTALLED TEMPLATES
+      // ============================================================
+      const W = 720;
+      const H = 1280;
+      const CX = W / 2;
+      const CY = 655;
+      const ARENA_R = 315;
+      const NECK_HALF_W = 54;
+      const NECK_TOP_Y = 0;
+      const NECK_JOIN_SIN = NECK_HALF_W / ARENA_R;
+      const NECK_JOIN_ANGLE = Math.asin(NECK_JOIN_SIN);
+      const NECK_JOIN_Y = CY - Math.sqrt(ARENA_R * ARENA_R - NECK_HALF_W * NECK_HALF_W);
+
+      const TIER_RADII = [24, 33, 44, 57, 72, 90, 112, 138];
+      const TIER_COUNT = TIER_RADII.length;
+      const CONFETTI_COLORS = ['#ff3b7f', '#00f0ff', '#ffe600', '#a855f7', '#22c55e', '#ff7b00', '#ffffff'];
+
+      const THEMES = {
+        animals: {
+          type: 'emoji',
+          emojis: ['🐣', '🐸', '🦊', '🦁', '🐼', '🦖', '🐉', '👑'],
+          caption: 'Which emoji are you waiting for?',
+        },
+        moods: {
+          type: 'emoji',
+          emojis: ['🙂', '😎', '🤪', '😡', '🥶', '🤯', '😈', '👽'],
+          caption: 'Which mood wins the arena?',
+        },
+        food: {
+          type: 'emoji',
+          emojis: ['🍒', '🍓', '🍊', '🍔', '🍕', '🍰', '🎂', '🏆'],
+          caption: 'Wait for the final feast!',
+        },
+        companies: {
+          type: 'badge',
+          caption: 'Which company reaches the top?',
+          items: [
+            { label: 'SPOTIFY', short: 'S', c1: '#1ed760', c2: '#0f7a34', accent: '#86efac', textCol: '#052e16' },
+            { label: 'NETFLIX', short: 'N', c1: '#e50914', c2: '#7f0008', accent: '#fca5a5', textCol: '#ffffff' },
+            { label: 'META', short: '∞', c1: '#0081fb', c2: '#004299', accent: '#7dd3fc', textCol: '#ffffff' },
+            { label: 'AMAZON', short: 'a', c1: '#ff9900', c2: '#b45309', accent: '#fde047', textCol: '#111827' },
+            { label: 'TESLA', short: 'T', c1: '#dc2626', c2: '#450a0a', accent: '#f87171', textCol: '#ffffff' },
+            { label: 'GOOGLE', short: 'G', c1: '#4285f4', c2: '#1d4ed8', accent: '#facc15', textCol: '#ffffff' },
+            { label: 'MICROSOFT', short: '⊞', c1: '#0ea5e9', c2: '#0369a1', accent: '#38bdf8', textCol: '#ffffff' },
+            { label: 'APPLE', short: '', c1: '#f8fafc', c2: '#94a3b8', accent: '#ffffff', textCol: '#0f172a' },
+          ],
+        },
+        aiModels: {
+          type: 'badge',
+          caption: 'Which AI model is the strongest?',
+          items: [
+            { label: 'PERPLEXITY', short: 'PX', c1: '#22d3ee', c2: '#0e7490', accent: '#67e8f9', textCol: '#083344' },
+            { label: 'MISTRAL', short: 'M', c1: '#f97316', c2: '#9a3412', accent: '#fdba74', textCol: '#ffffff' },
+            { label: 'DEEPSEEK', short: 'DS', c1: '#3b82f6', c2: '#1e3a8a', accent: '#93c5fd', textCol: '#ffffff' },
+            { label: 'LLAMA', short: '🦙', c1: '#6366f1', c2: '#312e81', accent: '#a5b4fc', textCol: '#ffffff' },
+            { label: 'GROK', short: 'X', c1: '#334155', c2: '#020617', accent: '#e2e8f0', textCol: '#ffffff' },
+            { label: 'CLAUDE', short: '✴', c1: '#d97757', c2: '#7c2d12', accent: '#fed7aa', textCol: '#ffffff' },
+            { label: 'CHATGPT', short: '◎', c1: '#10a37f', c2: '#064e3b', accent: '#6ee7b7', textCol: '#ffffff' },
+            { label: 'GEMINI', short: '✦', c1: '#8b5cf6', c2: '#2563eb', accent: '#67e8f9', textCol: '#ffffff' },
+          ],
+        },
+        phoneBrands: {
+          type: 'badge',
+          caption: 'Which phone brand are you using?',
+          items: [
+            { label: 'MOTOROLA', short: 'M', c1: '#2563eb', c2: '#172554', accent: '#93c5fd', textCol: '#ffffff' },
+            { label: 'VIVO', short: 'V', c1: '#38bdf8', c2: '#0369a1', accent: '#bae6fd', textCol: '#ffffff' },
+            { label: 'OPPO', short: 'O', c1: '#22c55e', c2: '#14532d', accent: '#86efac', textCol: '#ffffff' },
+            { label: 'ONEPLUS', short: '1+', c1: '#ef4444', c2: '#991b1b', accent: '#fca5a5', textCol: '#ffffff' },
+            { label: 'XIAOMI', short: 'Mi', c1: '#ff6900', c2: '#9a3412', accent: '#fdba74', textCol: '#ffffff' },
+            { label: 'PIXEL', short: 'G', c1: '#34d399', c2: '#0f766e', accent: '#a7f3d0', textCol: '#042f2e' },
+            { label: 'SAMSUNG', short: 'S', c1: '#1d4ed8', c2: '#0f172a', accent: '#60a5fa', textCol: '#ffffff' },
+            { label: 'IPHONE', short: '', c1: '#f8fafc', c2: '#64748b', accent: '#ffffff', textCol: '#0f172a' },
+          ],
+        },
+        anime: {
+          type: 'badge',
+          caption: 'Which anime legend are you waiting for?',
+          items: [
+            { label: 'CHOPPER', short: '🦌', c1: '#f472b6', c2: '#9d174d', accent: '#fbcfe8', textCol: '#ffffff' },
+            { label: 'TANJIRO', short: '🌊', c1: '#10b981', c2: '#064e3b', accent: '#6ee7b7', textCol: '#ffffff' },
+            { label: 'GOJO', short: '👁', c1: '#38bdf8', c2: '#312e81', accent: '#c4b5fd', textCol: '#ffffff' },
+            { label: 'LUFFY', short: '👒', c1: '#ef4444', c2: '#7f1d1d', accent: '#fde047', textCol: '#ffffff' },
+            { label: 'NARUTO', short: '🍥', c1: '#f97316', c2: '#9a3412', accent: '#fde047', textCol: '#ffffff' },
+            { label: 'SAITAMA', short: '👊', c1: '#facc15', c2: '#b91c1c', accent: '#fef08a', textCol: '#111827' },
+            { label: 'GOKU', short: '⚡', c1: '#fb923c', c2: '#1d4ed8', accent: '#fde047', textCol: '#ffffff' },
+            { label: 'ZENO KING', short: '👑', c1: '#a855f7', c2: '#0284c7', accent: '#fde047', textCol: '#ffffff' },
+          ],
+        },
+        carBrands: {
+          type: 'badge',
+          caption: 'Which dream car brand is yours?',
+          items: [
+            { label: 'TOYOTA', short: 'T', c1: '#dc2626', c2: '#7f1d1d', accent: '#fca5a5', textCol: '#ffffff' },
+            { label: 'HONDA', short: 'H', c1: '#e11d48', c2: '#4c0519', accent: '#fda4af', textCol: '#ffffff' },
+            { label: 'FORD', short: 'F', c1: '#1d4ed8', c2: '#172554', accent: '#93c5fd', textCol: '#ffffff' },
+            { label: 'AUDI', short: 'OOOO', c1: '#e2e8f0', c2: '#475569', accent: '#ffffff', textCol: '#0f172a' },
+            { label: 'BMW', short: 'BMW', c1: '#0284c7', c2: '#0f172a', accent: '#7dd3fc', textCol: '#ffffff' },
+            { label: 'MERCEDES', short: '★', c1: '#cbd5e1', c2: '#334155', accent: '#f8fafc', textCol: '#0f172a' },
+            { label: 'PORSCHE', short: 'P', c1: '#eab308', c2: '#991b1b', accent: '#fef08a', textCol: '#ffffff' },
+            { label: 'FERRARI', short: '🐎', c1: '#facc15', c2: '#ca8a04', accent: '#ef4444', textCol: '#111827' },
+          ],
+        },
+        carModels: {
+          type: 'badge',
+          caption: 'Wait for the hypercar king! 🏎️',
+          items: [
+            { label: 'CIVIC R', short: 'R', c1: '#ef4444', c2: '#7f1d1d', accent: '#fca5a5', textCol: '#ffffff' },
+            { label: 'MUSTANG', short: 'GT', c1: '#2563eb', c2: '#1e3a8a', accent: '#93c5fd', textCol: '#ffffff' },
+            { label: 'SUPRA', short: 'MK4', c1: '#f97316', c2: '#9a3412', accent: '#fed7aa', textCol: '#ffffff' },
+            { label: 'GT-R R35', short: 'GTR', c1: '#64748b', c2: '#0f172a', accent: '#f87171', textCol: '#ffffff' },
+            { label: '911 GT3', short: '911', c1: '#22c55e', c2: '#14532d', accent: '#bbf7d0', textCol: '#ffffff' },
+            { label: 'HURACAN', short: 'V10', c1: '#eab308', c2: '#713f12', accent: '#fef08a', textCol: '#111827' },
+            { label: 'CHIRON', short: 'W16', c1: '#0284c7', c2: '#09090b', accent: '#38bdf8', textCol: '#ffffff' },
+            { label: 'JESKO', short: '👑', c1: '#f8fafc', c2: '#d97706', accent: '#fde047', textCol: '#0f172a' },
+          ],
+        },
+        games: {
+          type: 'badge',
+          caption: 'Which game is the GOAT? 🎮',
+          items: [
+            { label: 'AMONG US', short: '🚀', c1: '#ef4444', c2: '#7f1d1d', accent: '#67e8f9', textCol: '#ffffff' },
+            { label: 'ROBLOX', short: '▣', c1: '#475569', c2: '#0f172a', accent: '#cbd5e1', textCol: '#ffffff' },
+            { label: 'VALORANT', short: 'V', c1: '#ff4655', c2: '#4c0519', accent: '#fda4af', textCol: '#ffffff' },
+            { label: 'FORTNITE', short: 'F', c1: '#8b5cf6', c2: '#1d4ed8', accent: '#67e8f9', textCol: '#ffffff' },
+            { label: 'PUBG', short: '🎯', c1: '#f59e0b', c2: '#78350f', accent: '#fde68a', textCol: '#111827' },
+            { label: 'COD', short: '💀', c1: '#22c55e', c2: '#052e16', accent: '#86efac', textCol: '#ffffff' },
+            { label: 'MINECRAFT', short: '🟩', c1: '#16a34a', c2: '#713f12', accent: '#86efac', textCol: '#ffffff' },
+            { label: 'GTA VI', short: 'VI', c1: '#ec4899', c2: '#f97316', accent: '#fde047', textCol: '#ffffff' },
+          ],
+        },
+        football: {
+          type: 'badge',
+          caption: 'Which football club wins it all? ⚽',
+          items: [
+            { label: 'MIAMI', short: 'IM', c1: '#f472b6', c2: '#111827', accent: '#fbcfe8', textCol: '#ffffff' },
+            { label: 'PSG', short: 'PSG', c1: '#1d4ed8', c2: '#991b1b', accent: '#93c5fd', textCol: '#ffffff' },
+            { label: 'MAN CITY', short: 'MC', c1: '#38bdf8', c2: '#0369a1', accent: '#e0f2fe', textCol: '#082f49' },
+            { label: 'LIVERPOOL', short: 'LFC', c1: '#dc2626', c2: '#7f1d1d', accent: '#fde047', textCol: '#ffffff' },
+            { label: 'ARSENAL', short: 'AFC', c1: '#ef4444', c2: '#1e3a8a', accent: '#fca5a5', textCol: '#ffffff' },
+            { label: 'BAYERN', short: 'FCB', c1: '#dc2626', c2: '#1d4ed8', accent: '#ffffff', textCol: '#ffffff' },
+            { label: 'BARCA', short: 'BAR', c1: '#1d4ed8', c2: '#991b1b', accent: '#facc15', textCol: '#ffffff' },
+            { label: 'REAL MADRID', short: '👑', c1: '#f8fafc', c2: '#ca8a04', accent: '#fde047', textCol: '#1e293b' },
+          ],
+        },
+        superheroes: {
+          type: 'badge',
+          caption: 'Who is the ultimate superhero? 💥',
+          items: [
+            { label: 'FLASH', short: '⚡', c1: '#dc2626', c2: '#7f1d1d', accent: '#facc15', textCol: '#ffffff' },
+            { label: 'SPIDER-MAN', short: '🕸', c1: '#ef4444', c2: '#1d4ed8', accent: '#fca5a5', textCol: '#ffffff' },
+            { label: 'BATMAN', short: '🦇', c1: '#334155', c2: '#020617', accent: '#facc15', textCol: '#facc15' },
+            { label: 'IRON MAN', short: '🦾', c1: '#dc2626', c2: '#b45309', accent: '#67e8f9', textCol: '#ffffff' },
+            { label: 'THOR', short: '🔨', c1: '#38bdf8', c2: '#1e3a8a', accent: '#bae6fd', textCol: '#ffffff' },
+            { label: 'HULK', short: '💚', c1: '#22c55e', c2: '#14532d', accent: '#86efac', textCol: '#ffffff' },
+            { label: 'SUPERMAN', short: 'S', c1: '#2563eb', c2: '#b91c1c', accent: '#facc15', textCol: '#facc15' },
+            { label: 'THANOS', short: '💎', c1: '#9333ea', c2: '#4c1d95', accent: '#fde047', textCol: '#ffffff' },
+          ],
+        },
+        socialMedia: {
+          type: 'badge',
+          caption: 'Which app do you use the most? 📱',
+          items: [
+            { label: 'SNAPCHAT', short: '👻', c1: '#facc15', c2: '#ca8a04', accent: '#fef08a', textCol: '#111827' },
+            { label: 'REDDIT', short: 'R', c1: '#ff4500', c2: '#9a3412', accent: '#fdba74', textCol: '#ffffff' },
+            { label: 'PINTEREST', short: 'P', c1: '#e60023', c2: '#7f1d1d', accent: '#fca5a5', textCol: '#ffffff' },
+            { label: 'X', short: '𝕏', c1: '#334155', c2: '#020617', accent: '#e2e8f0', textCol: '#ffffff' },
+            { label: 'DISCORD', short: '🎮', c1: '#5865f2', c2: '#312e81', accent: '#a5b4fc', textCol: '#ffffff' },
+            { label: 'TIKTOK', short: '♪', c1: '#111827', c2: '#020617', accent: '#22d3ee', textCol: '#ffffff' },
+            { label: 'INSTAGRAM', short: '📷', c1: '#ec4899', c2: '#f97316', accent: '#fde047', textCol: '#ffffff' },
+            { label: 'YOUTUBE', short: '▶', c1: '#ff0000', c2: '#7f1d1d', accent: '#fca5a5', textCol: '#ffffff' },
+          ],
+        },
+      };
+
+      // ============================================================
+      // 2. 50 POPULAR & TRENDING BUILT-IN SFX DEFINITIONS
+      // ============================================================
+      const SFX_CATALOG = [
+        // 1-10: Trending & Viral
+        { id: 'vineBoom', cat: 'Trending & Viral (1–10)', name: '01. Vine Boom (Sub Thud)' },
+        { id: 'popChime', cat: 'Trending & Viral (1–10)', name: '02. Pop & Scale Chime' },
+        { id: 'waterDrop', cat: 'Trending & Viral (1–10)', name: '03. Water Droplet Bloop' },
+        { id: 'bubblePop', cat: 'Trending & Viral (1–10)', name: '04. Crisp Bubble Pop' },
+        { id: 'animeWhoosh', cat: 'Trending & Viral (1–10)', name: '05. Anime Whoosh Impact' },
+        { id: 'bassDrop808', cat: 'Trending & Viral (1–10)', name: '06. 808 Bass Drop Hit' },
+        { id: 'glitchZap', cat: 'Trending & Viral (1–10)', name: '07. Viral Glitch Zap' },
+        { id: 'whipCrack', cat: 'Trending & Viral (1–10)', name: '08. Whip Crack Snap' },
+        { id: 'dunDunDun', cat: 'Trending & Viral (1–10)', name: '09. Dramatic Dun-Dun' },
+        { id: 'swooshPop', cat: 'Trending & Viral (1–10)', name: '10. Swoosh Riser Pop' },
+
+        // 11-22: Gaming & Arcade
+        { id: 'retroCoin', cat: 'Gaming & Arcade (11–22)', name: '11. Retro Coin Pickup' },
+        { id: 'powerUp', cat: 'Gaming & Arcade (11–22)', name: '12. Power-Up Level Up' },
+        { id: 'jump8bit', cat: 'Gaming & Arcade (11–22)', name: '13. 8-Bit Jump Boing' },
+        { id: 'laserPew', cat: 'Gaming & Arcade (11–22)', name: '14. Arcade Laser Pew' },
+        { id: 'arcadeBlip', cat: 'Gaming & Arcade (11–22)', name: '15. Retro Arcade Blip' },
+        { id: 'pixelBoom', cat: 'Gaming & Arcade (11–22)', name: '16. Pixel Explosion Crunch' },
+        { id: 'bossSlam', cat: 'Gaming & Arcade (11–22)', name: '17. Boss Hit Slam' },
+        { id: 'shieldClang', cat: 'Gaming & Arcade (11–22)', name: '18. Shield Block Clang' },
+        { id: 'comboDing', cat: 'Gaming & Arcade (11–22)', name: '19. Combo Multiplier Ding' },
+        { id: 'pacWakka', cat: 'Gaming & Arcade (11–22)', name: '20. Chomp Wakka' },
+        { id: 'warpPipe', cat: 'Gaming & Arcade (11–22)', name: '21. Warp Pipe Slide' },
+        { id: 'victoryChord', cat: 'Gaming & Arcade (11–22)', name: '22. Victory Fanfare Chord' },
+
+        // 23-34: Meme & Cartoon
+        { id: 'cartoonBoing', cat: 'Meme & Cartoon (23–34)', name: '23. Cartoon Spring Boing' },
+        { id: 'slideUp', cat: 'Meme & Cartoon (23–34)', name: '24. Slide Whistle Up' },
+        { id: 'slideDown', cat: 'Meme & Cartoon (23–34)', name: '25. Slide Whistle Down' },
+        { id: 'rubberDuck', cat: 'Meme & Cartoon (23–34)', name: '26. Rubber Duck Squeak' },
+        { id: 'cartoonBonk', cat: 'Meme & Cartoon (23–34)', name: '27. Meme Bonk Knock' },
+        { id: 'recordScratch', cat: 'Meme & Cartoon (23–34)', name: '28. Record Scratch Zip' },
+        { id: 'airhorn', cat: 'Meme & Cartoon (23–34)', name: '29. MLG Airhorn Blast' },
+        { id: 'bruhSynth', cat: 'Meme & Cartoon (23–34)', name: '30. Deep Bruh Bass' },
+        { id: 'sadWah', cat: 'Meme & Cartoon (23–34)', name: '31. Sad Trombone Wah' },
+        { id: 'clownHonk', cat: 'Meme & Cartoon (23–34)', name: '32. Clown Nose Honk' },
+        { id: 'duckQuack', cat: 'Meme & Cartoon (23–34)', name: '33. Funny Duck Quack' },
+        { id: 'corkPop', cat: 'Meme & Cartoon (23–34)', name: '34. Champagne Cork Pop' },
+
+        // 35-44: Musical & ASMR Satisfying
+        { id: 'marimba', cat: 'Musical & ASMR (35–44)', name: '35. Wood Marimba Note' },
+        { id: 'kalimba', cat: 'Musical & ASMR (35–44)', name: '36. Kalimba Thumb Pluck' },
+        { id: 'crystalDing', cat: 'Musical & ASMR (35–44)', name: '37. Glass Crystal Ding' },
+        { id: 'pianoChord', cat: 'Musical & ASMR (35–44)', name: '38. Bright Piano Chord' },
+        { id: 'bellSparkle', cat: 'Musical & ASMR (35–44)', name: '39. Fairy Bell Sparkle' },
+        { id: 'lofiEp', cat: 'Musical & ASMR (35–44)', name: '40. Lo-Fi Electric Piano' },
+        { id: 'harpGliss', cat: 'Musical & ASMR (35–44)', name: '41. Harp Sparkle Arpeggio' },
+        { id: 'steelDrum', cat: 'Musical & ASMR (35–44)', name: '42. Tropical Steel Drum' },
+        { id: 'woodBlock', cat: 'Musical & ASMR (35–44)', name: '43. ASMR Woodblock Tap' },
+        { id: 'windChime', cat: 'Musical & ASMR (35–44)', name: '44. Ethereal Wind Chime' },
+
+        // 45-50: Sci-Fi & Cyberpunk
+        { id: 'plasmaPulse', cat: 'Sci-Fi & Cyberpunk (45–50)', name: '45. Plasma Energy Pulse' },
+        { id: 'cyberLock', cat: 'Sci-Fi & Cyberpunk (45–50)', name: '46. Cyber Target Lock-On' },
+        { id: 'hyperWarp', cat: 'Sci-Fi & Cyberpunk (45–50)', name: '47. Hyperdrive Warp' },
+        { id: 'robotBeep', cat: 'Sci-Fi & Cyberpunk (45–50)', name: '48. Robot Beep-Boop' },
+        { id: 'alienUfo', cat: 'Sci-Fi & Cyberpunk (45–50)', name: '49. Alien UFO Wobble' },
+        { id: 'quantumHit', cat: 'Sci-Fi & Cyberpunk (45–50)', name: '50. Quantum Bass Shatter' },
+      ];
+
+      const state = {
+        playing: true,
+        themeKey: 'animals',
+        audioStyle: 'popChime',
+        muted: false,
+        dropInterval: 0.38,
+        dropTimer: 0.12,
+        caption: THEMES.animals.caption,
+        merges: 0,
+        highestTier: 0,
+        rainbowPhase: 0,
+        exportFormat: 'mp4', // 'mp4' or 'webm'
+        recording: false,
+        recordEngine: null, // 'webcodecs-mp4', 'mediarecorder-mp4', or 'mediarecorder-webm'
+        recordMode: 'untilFinal',
+        recordDuration: 60,
+        recordStartMs: 0,
+        finalReachedAtMs: null,
+        lastBlobUrl: null,
+        lastTs: 0,
+        pendingPngTier: 0,
+        songVolume: 0.65,
+      };
+
+      const customPngs = new Array(TIER_COUNT).fill(null);
+
+      // DOM elements
+      const canvas = document.getElementById('shortCanvas');
+      const ctx = canvas.getContext('2d');
+      const audioUnlockBanner = document.getElementById('audioUnlockBanner');
+      const recBadge = document.getElementById('recBadge');
+      const recBadgeText = document.getElementById('recBadgeText');
+      const mergeCounter = document.getElementById('mergeCounter');
+      const highestTierLabel = document.getElementById('highestTierLabel');
+      const tierLadder = document.getElementById('tierLadder');
+      const customPngCount = document.getElementById('customPngCount');
+      const bulkPngBtn = document.getElementById('bulkPngBtn');
+      const clearPngsBtn = document.getElementById('clearPngsBtn');
+      const singlePngInput = document.getElementById('singlePngInput');
+      const bulkPngInput = document.getElementById('bulkPngInput');
+      const uploadSongBtn = document.getElementById('uploadSongBtn');
+      const clearSongBtn = document.getElementById('clearSongBtn');
+      const songFileInput = document.getElementById('songFileInput');
+      const songNameLabel = document.getElementById('songNameLabel');
+      const songVolumeSlider = document.getElementById('songVolumeSlider');
+      const songVolumeVal = document.getElementById('songVolumeVal');
+      const uploadSfxBtn = document.getElementById('uploadSfxBtn');
+      const clearSfxBtn = document.getElementById('clearSfxBtn');
+      const sfxFileInput = document.getElementById('sfxFileInput');
+      const playPauseBtn = document.getElementById('playPauseBtn');
+      const dropNowBtn = document.getElementById('dropNowBtn');
+      const resetBtn = document.getElementById('resetBtn');
+      const themeSelect = document.getElementById('themeSelect');
+      const audioStyleSelect = document.getElementById('audioStyleSelect');
+      const testSfxBtn = document.getElementById('testSfxBtn');
+      const randomSfxBtn = document.getElementById('randomSfxBtn');
+      const muteBtn = document.getElementById('muteBtn');
+      const dropRateSlider = document.getElementById('dropRateSlider');
+      const dropRateVal = document.getElementById('dropRateVal');
+      const captionInput = document.getElementById('captionInput');
+      const fmtMp4Btn = document.getElementById('fmtMp4Btn');
+      const fmtWebmBtn = document.getElementById('fmtWebmBtn');
+      const recordModeSelect = document.getElementById('recordModeSelect');
+      const customDurationInput = document.getElementById('customDurationInput');
+      const durationPresets = document.getElementById('durationPresets');
+      const formatSupportBadge = document.getElementById('formatSupportBadge');
+      const recordBtn = document.getElementById('recordBtn');
+      const recordBtnText = document.getElementById('recordBtnText');
+      const recProgressWrap = document.getElementById('recProgressWrap');
+      const recProgressBar = document.getElementById('recProgressBar');
+      const statusToast = document.getElementById('statusToast');
+      const downloadLink = document.getElementById('downloadLink');
+
+      // Populate 50 SFX dropdown grouped by category
+      (function populateSfxDropdown() {
+        const groups = {};
+        for (let i = 0; i < SFX_CATALOG.length; i++) {
+          const item = SFX_CATALOG[i];
+          if (!groups[item.cat]) {
+            groups[item.cat] = document.createElement('optgroup');
+            groups[item.cat].label = item.cat;
+            audioStyleSelect.appendChild(groups[item.cat]);
+          }
+          const opt = document.createElement('option');
+          opt.value = item.id;
+          opt.textContent = item.name;
+          if (item.id === state.audioStyle) opt.selected = true;
+          groups[item.cat].appendChild(opt);
+        }
+        const offOpt = document.createElement('option');
+        offOpt.value = 'off';
+        offOpt.textContent = '🔇 SFX Off (Song Only)';
+        audioStyleSelect.appendChild(offOpt);
+      })();
+
+      // ============================================================
+      // 3. PRE-RENDERED SPRITE CACHE (EMOJIS, VECTOR BADGES, PNGS)
+      // ============================================================
+      const spriteCache = new Map();
+
+      function getEmojiSprite(emoji, radius) {
+        const key = 'e_' + emoji + '_' + radius;
+        if (spriteCache.has(key)) return spriteCache.get(key);
+
+        const size = Math.ceil(radius * 2.5);
+        const off = document.createElement('canvas');
+        off.width = size;
+        off.height = size;
+        const octx = off.getContext('2d');
+
+        octx.textAlign = 'center';
+        octx.textBaseline = 'middle';
+        octx.font = Math.round(radius * 1.72) + 'px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+        octx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+        octx.shadowBlur = Math.max(4, radius * 0.14);
+        octx.shadowOffsetY = Math.max(2, radius * 0.06);
+        octx.fillText(emoji, size / 2, size / 2 + radius * 0.06);
+
+        spriteCache.set(key, off);
+        return off;
+      }
+
+      function getBadgeSprite(item, radius) {
+        const key = 'b_' + item.label + '_' + radius;
+        if (spriteCache.has(key)) return spriteCache.get(key);
+
+        const size = Math.ceil(radius * 2.45);
+        const cx = size / 2;
+        const cy = size / 2;
+        const r = radius * 0.96;
+        const off = document.createElement('canvas');
+        off.width = size;
+        off.height = size;
+        const octx = off.getContext('2d');
+
+        octx.save();
+        octx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+        octx.shadowBlur = Math.max(5, radius * 0.16);
+        octx.shadowOffsetY = Math.max(2, radius * 0.07);
+
+        const grad = octx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.1, cx, cy, r);
+        grad.addColorStop(0, item.c1);
+        grad.addColorStop(1, item.c2);
+        octx.fillStyle = grad;
+        octx.beginPath();
+        octx.arc(cx, cy, r, 0, Math.PI * 2);
+        octx.fill();
+        octx.restore();
+
+        octx.save();
+        octx.beginPath();
+        octx.arc(cx, cy, r - 2, 0, Math.PI * 2);
+        octx.clip();
+        const gloss = octx.createLinearGradient(cx, cy - r, cx, cy + r * 0.2);
+        gloss.addColorStop(0, 'rgba(255, 255, 255, 0.36)');
+        gloss.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        octx.fillStyle = gloss;
+        octx.beginPath();
+        octx.ellipse(cx, cy - r * 0.45, r * 0.88, r * 0.52, 0, 0, Math.PI * 2);
+        octx.fill();
+        octx.restore();
+
+        octx.lineWidth = Math.max(2.2, r * 0.065);
+        octx.strokeStyle = item.accent;
+        octx.beginPath();
+        octx.arc(cx, cy, r - octx.lineWidth * 0.5, 0, Math.PI * 2);
+        octx.stroke();
+
+        const showLabel = radius >= 38;
+        const symbolY = showLabel ? cy - r * 0.14 : cy + r * 0.03;
+        const shortLen = item.short.length;
+        const symbolSize = Math.round(r * (shortLen >= 3 ? 0.52 : (shortLen === 2 ? 0.72 : 0.92)));
+        octx.fillStyle = item.textCol;
+        octx.textAlign = 'center';
+        octx.textBaseline = 'middle';
+        octx.font = '900 ' + symbolSize + 'px "Inter", "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+        octx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+        octx.shadowBlur = 4;
+        octx.fillText(item.short, cx, symbolY, r * 1.55);
+
+        if (showLabel) {
+          const pillW = r * 1.48;
+          const pillH = Math.max(14, r * 0.32);
+          const pillY = cy + r * 0.46;
+          octx.shadowBlur = 0;
+          octx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+          octx.beginPath();
+          octx.roundRect(cx - pillW / 2, pillY - pillH / 2, pillW, pillH, pillH / 2);
+          octx.fill();
+
+          octx.fillStyle = '#ffffff';
+          octx.font = '800 ' + Math.max(9, Math.round(r * 0.19)) + 'px "Inter", sans-serif';
+          octx.fillText(item.label, cx, pillY + 0.5, pillW - 8);
+        }
+
+        spriteCache.set(key, off);
+        return off;
+      }
+
+      function buildPngSprite(img, radius) {
+        const size = Math.ceil(radius * 2.5);
+        const off = document.createElement('canvas');
+        off.width = size;
+        off.height = size;
+        const octx = off.getContext('2d');
+
+        const targetDia = radius * 2.02;
+        const iw = img.naturalWidth || img.width || targetDia;
+        const ih = img.naturalHeight || img.height || targetDia;
+        const scale = targetDia / Math.max(iw, ih);
+        const dw = iw * scale;
+        const dh = ih * scale;
+
+        octx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+        octx.shadowBlur = Math.max(4, radius * 0.12);
+        octx.shadowOffsetY = Math.max(2, radius * 0.05);
+        octx.drawImage(img, (size - dw) / 2, (size - dh) / 2, dw, dh);
+        return off;
+      }
+
+      function loadCustomPngForTier(tierIdx, file) {
+        if (tierIdx < 0 || tierIdx >= TIER_COUNT || !file) return;
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = function () {
+          if (customPngs[tierIdx] && customPngs[tierIdx].url) {
+            URL.revokeObjectURL(customPngs[tierIdx].url);
+          }
+          customPngs[tierIdx] = {
+            img: img,
+            url: url,
+            name: file.name,
+            spriteCanvas: buildPngSprite(img, TIER_RADII[tierIdx]),
+          };
+          renderTierLadder();
+          updateStatsUI();
+          statusToast.textContent = 'Loaded "' + file.name + '" into Tier ' + (tierIdx + 1) + '.';
+        };
+        img.onerror = function () {
+          URL.revokeObjectURL(url);
+          statusToast.textContent = 'Could not load image "' + file.name + '".';
+        };
+        img.src = url;
+      }
+
+      // ============================================================
+      // 4. WEB AUDIO ENGINE & 50 PROCEDURAL SFX SYNTHESIZER
+      // ============================================================
+      let audioCtx = null;
+      let masterGain = null;
+      let musicGain = null;
+      let sfxGain = null;
+      let mediaAudioDest = null;
+      let noiseBuffer = null;
+
+      let customSongBuffer = null;
+      let customSongSource = null;
+      let customSongOffset = 0;
+      let customSongStartedAt = 0;
+      let customSfxBuffer = null;
+
+      function ensureAudio() {
+        if (!audioCtx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return null;
+          audioCtx = new AC();
+
+          masterGain = audioCtx.createGain();
+          masterGain.gain.value = state.muted ? 0 : 0.85;
+          masterGain.connect(audioCtx.destination);
+
+          musicGain = audioCtx.createGain();
+          musicGain.gain.value = state.songVolume;
+          musicGain.connect(masterGain);
+
+          sfxGain = audioCtx.createGain();
+          sfxGain.gain.value = 0.82;
+          sfxGain.connect(masterGain);
+
+          // Shared white noise buffer for whooshes, whips, explosions, scratches
+          const nbLen = audioCtx.sampleRate * 1.0;
+          noiseBuffer = audioCtx.createBuffer(1, nbLen, audioCtx.sampleRate);
+          const data = noiseBuffer.getChannelData(0);
+          for (let i = 0; i < nbLen; i++) data[i] = Math.random() * 2 - 1;
+
+          if (typeof audioCtx.createMediaStreamDestination === 'function') {
+            mediaAudioDest = audioCtx.createMediaStreamDestination();
+            masterGain.connect(mediaAudioDest);
+          }
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(function () {});
+        }
+        if (audioCtx.state === 'running') {
+          audioUnlockBanner.classList.add('hidden');
+        }
+        return audioCtx;
+      }
+
+      function stopCustomSongSource(preserveOffset) {
+        if (customSongSource) {
+          if (preserveOffset && audioCtx && customSongBuffer && customSongBuffer.duration > 0) {
+            const elapsed = audioCtx.currentTime - customSongStartedAt;
+            customSongOffset = (customSongOffset + elapsed) % customSongBuffer.duration;
+          }
+          try {
+            customSongSource.stop();
+            customSongSource.disconnect();
+          } catch (e) {}
+          customSongSource = null;
+        }
+      }
+
+      function startCustomSong(fromZero) {
+        if (!customSongBuffer) return;
+        const ctxAudio = ensureAudio();
+        if (!ctxAudio) return;
+
+        stopCustomSongSource(false);
+        if (fromZero) customSongOffset = 0;
+
+        const src = ctxAudio.createBufferSource();
+        src.buffer = customSongBuffer;
+        src.loop = true;
+        src.connect(musicGain);
+        const startPos = customSongBuffer.duration > 0 ? (customSongOffset % customSongBuffer.duration) : 0;
+        src.start(0, startPos);
+        customSongStartedAt = ctxAudio.currentTime;
+        customSongSource = src;
+      }
+
+      function loadAudioFile(file, target) {
+        if (!file) return;
+        const ctxAudio = ensureAudio();
+        if (!ctxAudio) {
+          statusToast.textContent = 'Web Audio is not supported in this browser.';
+          return;
+        }
+        statusToast.textContent = 'Decoding "' + file.name + '"...';
+        const reader = new FileReader();
+        reader.onload = function (ev) {
+          ctxAudio.decodeAudioData(ev.target.result.slice(0))
+            .then(function (decoded) {
+              if (target === 'song') {
+                customSongBuffer = decoded;
+                songNameLabel.textContent = file.name;
+                songNameLabel.classList.remove('text-slate-400');
+                songNameLabel.classList.add('text-fuchsia-300');
+                if (state.playing) startCustomSong(true);
+                statusToast.textContent = 'Song "' + file.name + '" loaded! Included in MP4 & WebM.';
+              } else {
+                customSfxBuffer = decoded;
+                uploadSfxBtn.textContent = '🎙️ SFX: ' + file.name;
+                clearSfxBtn.classList.remove('hidden');
+                playMergeSound(2);
+                statusToast.textContent = 'Custom merge SFX "' + file.name + '" loaded (auto pitch-shifted).';
+              }
+            })
+            .catch(function () {
+              statusToast.textContent = 'Could not decode "' + file.name + '". Try MP3, WAV, or OGG.';
+            });
+        };
+        reader.readAsArrayBuffer(file);
+      }
+
+      // Helper synth primitives for crisp 50 SFX synthesis
+      function playTone(type, fStart, fEnd, dur, vol, delay, filterFreq) {
+        const now = audioCtx.currentTime + (delay || 0);
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(Math.max(25, fStart), now);
+        if (fEnd && fEnd !== fStart) {
+          osc.frequency.exponentialRampToValueAtTime(Math.max(25, fEnd), now + dur);
+        }
+        g.gain.setValueAtTime(vol, now);
+        g.gain.exponentialRampToValueAtTime(0.0008, now + dur);
+
+        if (filterFreq) {
+          const flt = audioCtx.createBiquadFilter();
+          flt.type = 'lowpass';
+          flt.frequency.setValueAtTime(filterFreq, now);
+          osc.connect(flt);
+          flt.connect(g);
+        } else {
+          osc.connect(g);
+        }
+        g.connect(sfxGain);
+        osc.start(now);
+        osc.stop(now + dur + 0.015);
+      }
+
+      function playNoise(dur, vol, filterType, fStart, fEnd, delay) {
+        if (!noiseBuffer) return;
+        const now = audioCtx.currentTime + (delay || 0);
+        const src = audioCtx.createBufferSource();
+        src.buffer = noiseBuffer;
+        const flt = audioCtx.createBiquadFilter();
+        flt.type = filterType || 'bandpass';
+        flt.frequency.setValueAtTime(Math.max(60, fStart || 1200), now);
+        if (fEnd && fEnd !== fStart) {
+          flt.frequency.exponentialRampToValueAtTime(Math.max(60, fEnd), now + dur);
+        }
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(vol, now);
+        g.gain.exponentialRampToValueAtTime(0.0008, now + dur);
+        src.connect(flt);
+        flt.connect(g);
+        g.connect(sfxGain);
+        src.start(now);
+        src.stop(now + dur + 0.015);
+      }
+
+      function playDropTick() {
+        if (state.muted || !audioCtx || audioCtx.state !== 'running' || state.audioStyle === 'off') return;
+        playTone('sine', 520, 240, 0.045, 0.05, 0);
+      }
+
+      function playMergeSound(tier) {
+        if (state.muted || !audioCtx || audioCtx.state !== 'running') return;
+
+        if (customSfxBuffer) {
+          const src = audioCtx.createBufferSource();
+          const gain = audioCtx.createGain();
+          src.buffer = customSfxBuffer;
+          src.playbackRate.value = Math.max(0.55, 1.25 - tier * 0.1);
+          gain.gain.value = 0.85;
+          src.connect(gain);
+          gain.connect(sfxGain);
+          src.start(0);
+          return;
+        }
+
+        const id = state.audioStyle;
+        if (id === 'off') return;
+
+        const penta = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25];
+        const note = penta[Math.min(tier, penta.length - 1)];
+        const up = 1 + tier * 0.09;
+        const down = Math.max(0.55, 1.15 - tier * 0.08);
+
+        switch (id) {
+          // 1-10: Trending & Viral
+          case 'vineBoom':
+            playTone('sine', 135 * down, 34, 0.42, 0.55, 0);
+            playTone('triangle', 95 * down, 28, 0.34, 0.35, 0, 220);
+            playNoise(0.06, 0.16, 'lowpass', 480, 120, 0);
+            break;
+          case 'popChime':
+            playTone('sine', 320 + tier * 55, (320 + tier * 55) * 2.1, 0.08, 0.24, 0);
+            playTone('triangle', note, note, 0.28 + tier * 0.03, 0.26, 0);
+            if (tier >= 4) playTone('sine', 100, 42, 0.3, 0.28, 0);
+            break;
+          case 'waterDrop':
+            playTone('sine', 260 * up, 980 * up, 0.12, 0.3, 0);
+            playTone('sine', 520 * up, 1180 * up, 0.08, 0.14, 0.03);
+            break;
+          case 'bubblePop':
+            playTone('sine', 210 * up, 740 * up, 0.065, 0.34, 0);
+            playNoise(0.03, 0.12, 'highpass', 1800, 3200, 0.01);
+            break;
+          case 'animeWhoosh':
+            playNoise(0.24, 0.28, 'bandpass', 400, 2600, 0);
+            playTone('sawtooth', 180 * down, 55, 0.22, 0.22, 0.06, 650);
+            break;
+          case 'bassDrop808':
+            playTone('sine', 160 * down, 38, 0.48, 0.52, 0);
+            playTone('sawtooth', 160 * down, 50, 0.22, 0.16, 0, 340);
+            break;
+          case 'glitchZap':
+            playTone('sawtooth', 920 * up, 180, 0.05, 0.2, 0);
+            playTone('square', 340 * up, 1240 * up, 0.05, 0.18, 0.045);
+            playNoise(0.07, 0.16, 'bandpass', 2400, 600, 0.03);
+            break;
+          case 'whipCrack':
+            playNoise(0.09, 0.18, 'bandpass', 600, 3200, 0);
+            playNoise(0.07, 0.38, 'highpass', 2600, 5000, 0.065);
+            playTone('triangle', 420, 120, 0.06, 0.18, 0.065);
+            break;
+          case 'dunDunDun':
+            playTone('sawtooth', 146.8 * down, 144 * down, 0.14, 0.22, 0, 550);
+            playTone('sawtooth', 110 * down, 106 * down, 0.32, 0.28, 0.12, 480);
+            break;
+          case 'swooshPop':
+            playNoise(0.14, 0.2, 'bandpass', 300, 2200, 0);
+            playTone('sine', 340 * up, 880 * up, 0.09, 0.28, 0.09);
+            break;
+
+          // 11-22: Gaming & Arcade
+          case 'retroCoin':
+            playTone('square', 987.77, 987.77, 0.075, 0.15, 0);
+            playTone('square', 1318.51, 1318.51, 0.22, 0.16, 0.07);
+            break;
+          case 'powerUp':
+            playTone('square', note * 0.75, note * 0.75, 0.06, 0.13, 0);
+            playTone('square', note, note, 0.06, 0.14, 0.055);
+            playTone('square', note * 1.25, note * 1.25, 0.06, 0.14, 0.11);
+            playTone('square', note * 1.5, note * 1.5, 0.16, 0.15, 0.165);
+            break;
+          case 'jump8bit':
+            playTone('square', 220 * up, 620 * up, 0.16, 0.15, 0);
+            break;
+          case 'laserPew':
+            playTone('sawtooth', 1400 * up, 180, 0.16, 0.18, 0, 2400);
+            playTone('sine', 1200 * up, 220, 0.14, 0.15, 0);
+            break;
+          case 'arcadeBlip':
+            playTone('square', note * 0.75, note * 0.75, 0.05, 0.14, 0);
+            playTone('square', note, note, 0.05, 0.14, 0.05);
+            playTone('square', note * 1.5, note * 1.5, 0.14, 0.14, 0.1);
+            break;
+          case 'pixelBoom':
+            playNoise(0.28, 0.3, 'lowpass', 900, 140, 0);
+            playTone('sawtooth', 140 * down, 35, 0.25, 0.24, 0, 360);
+            break;
+          case 'bossSlam':
+            playTone('sine', 150 * down, 36, 0.36, 0.45, 0);
+            playTone('square', 90 * down, 32, 0.22, 0.18, 0, 260);
+            playNoise(0.14, 0.25, 'lowpass', 700, 180, 0);
+            break;
+          case 'shieldClang':
+            playTone('triangle', 840 * up, 780 * up, 0.18, 0.22, 0);
+            playTone('square', 1320 * up, 1290 * up, 0.14, 0.11, 0, 2500);
+            playNoise(0.05, 0.18, 'highpass', 2200, 4200, 0);
+            break;
+          case 'comboDing':
+            playTone('sine', note * 1.5, note * 1.5, 0.26, 0.24, 0);
+            playTone('sine', note * 2.0, note * 2.0, 0.32, 0.18, 0.045);
+            break;
+          case 'pacWakka':
+            playTone('triangle', 320, 680, 0.075, 0.24, 0);
+            playTone('triangle', 680, 260, 0.08, 0.22, 0.075);
+            break;
+          case 'warpPipe':
+            playTone('square', 520, 180, 0.09, 0.14, 0, 900);
+            playTone('square', 440, 140, 0.09, 0.14, 0.08, 800);
+            break;
+          case 'victoryChord':
+            playTone('triangle', note, note, 0.35, 0.2, 0);
+            playTone('triangle', note * 1.25, note * 1.25, 0.35, 0.18, 0.04);
+            playTone('triangle', note * 1.5, note * 1.5, 0.4, 0.18, 0.08);
+            break;
+
+          // 23-34: Meme & Cartoon
+          case 'cartoonBoing':
+            playTone('sine', 190 * up, 480 * up, 0.09, 0.28, 0);
+            playTone('sine', 480 * up, 230 * up, 0.1, 0.24, 0.08);
+            playTone('sine', 230 * up, 410 * up, 0.11, 0.2, 0.17);
+            break;
+          case 'slideUp':
+            playTone('sine', 340, 1480 * Math.min(1.3, up), 0.24, 0.24, 0);
+            break;
+          case 'slideDown':
+            playTone('sine', 1360 * down, 280, 0.26, 0.24, 0);
+            break;
+          case 'rubberDuck':
+            playTone('sawtooth', 780 * up, 1180 * up, 0.07, 0.16, 0, 2000);
+            playTone('sawtooth', 1120 * up, 620 * up, 0.09, 0.16, 0.065, 1600);
+            break;
+          case 'cartoonBonk':
+            playTone('triangle', 460 * down, 175 * down, 0.11, 0.36, 0);
+            playTone('sine', 220 * down, 95 * down, 0.14, 0.28, 0);
+            break;
+          case 'recordScratch':
+            playNoise(0.11, 0.24, 'bandpass', 900, 3400, 0);
+            playTone('sawtooth', 420, 1280, 0.08, 0.15, 0, 2200);
+            playTone('sawtooth', 1280, 320, 0.08, 0.15, 0.075, 1600);
+            break;
+          case 'airhorn':
+            playTone('sawtooth', 392, 396, 0.28, 0.16, 0, 1900);
+            playTone('sawtooth', 493.88, 498, 0.28, 0.15, 0, 1900);
+            playTone('sawtooth', 587.33, 592, 0.28, 0.14, 0, 1900);
+            break;
+          case 'bruhSynth':
+            playTone('sawtooth', 145 * down, 92 * down, 0.28, 0.24, 0, 420);
+            playTone('sine', 110 * down, 68 * down, 0.3, 0.26, 0);
+            break;
+          case 'sadWah':
+            playTone('sawtooth', 311 * down, 293 * down, 0.15, 0.16, 0, 850);
+            playTone('sawtooth', 277 * down, 250 * down, 0.22, 0.17, 0.14, 750);
+            break;
+          case 'clownHonk':
+            playTone('sawtooth', 360 * up, 410 * up, 0.09, 0.18, 0, 1200);
+            playTone('sawtooth', 360 * up, 320 * up, 0.11, 0.18, 0.095, 1000);
+            break;
+          case 'duckQuack':
+            playTone('sawtooth', 540 * down, 310 * down, 0.14, 0.2, 0, 1300);
+            playNoise(0.08, 0.12, 'bandpass', 1100, 600, 0);
+            break;
+          case 'corkPop':
+            playTone('sine', 180 * up, 640 * up, 0.055, 0.35, 0);
+            playNoise(0.05, 0.26, 'bandpass', 1600, 700, 0.025);
+            break;
+
+          // 35-44: Musical & ASMR
+          case 'marimba':
+            playTone('sine', note, note, 0.24, 0.3, 0);
+            playTone('triangle', note * 4, note * 4, 0.05, 0.1, 0);
+            break;
+          case 'kalimba':
+            playTone('sine', note * 1.5, note * 1.5, 0.36, 0.26, 0);
+            playTone('sine', note * 3.0, note * 3.0, 0.12, 0.09, 0);
+            break;
+          case 'crystalDing':
+            playTone('sine', note * 2, note * 2, 0.42, 0.2, 0);
+            playTone('sine', note * 3.01, note * 3.01, 0.35, 0.12, 0.01);
+            break;
+          case 'pianoChord':
+            playTone('triangle', note, note, 0.32, 0.22, 0, 2200);
+            playTone('triangle', note * 1.25, note * 1.25, 0.3, 0.16, 0, 2200);
+            playTone('sine', note * 0.5, note * 0.5, 0.34, 0.18, 0);
+            break;
+          case 'bellSparkle':
+            playTone('sine', note * 2, note * 2, 0.22, 0.16, 0);
+            playTone('sine', note * 2.5, note * 2.5, 0.24, 0.15, 0.045);
+            playTone('sine', note * 3, note * 3, 0.28, 0.14, 0.09);
+            break;
+          case 'lofiEp':
+            playTone('sine', note, note * 0.994, 0.4, 0.24, 0);
+            playTone('triangle', note * 1.5, note * 1.492, 0.34, 0.12, 0.01, 1100);
+            break;
+          case 'harpGliss':
+            playTone('triangle', note, note, 0.24, 0.16, 0);
+            playTone('triangle', note * 1.25, note * 1.25, 0.24, 0.15, 0.04);
+            playTone('triangle', note * 1.5, note * 1.5, 0.26, 0.14, 0.08);
+            playTone('triangle', note * 2, note * 2, 0.3, 0.14, 0.12);
+            break;
+          case 'steelDrum':
+            playTone('sine', note * 1.5, note * 1.53, 0.26, 0.24, 0);
+            playTone('triangle', note * 3, note * 3.02, 0.14, 0.12, 0);
+            break;
+          case 'woodBlock':
+            playTone('sine', 720 * up, 620 * up, 0.065, 0.32, 0);
+            playTone('triangle', 1440 * up, 1200 * up, 0.03, 0.14, 0);
+            break;
+          case 'windChime':
+            playTone('sine', note * 3, note * 3, 0.45, 0.14, 0);
+            playTone('sine', note * 3.5, note * 3.5, 0.42, 0.12, 0.05);
+            playTone('sine', note * 4, note * 4, 0.48, 0.11, 0.1);
+            break;
+
+          // 45-50: Sci-Fi & Cyberpunk
+          case 'plasmaPulse':
+            playTone('sawtooth', 620 * up, 110, 0.2, 0.22, 0, 1400);
+            playTone('sine', 240 * up, 70, 0.22, 0.24, 0);
+            break;
+          case 'cyberLock':
+            playTone('square', 880 * up, 880 * up, 0.045, 0.13, 0);
+            playTone('square', 1320 * up, 1320 * up, 0.07, 0.15, 0.055);
+            break;
+          case 'hyperWarp':
+            playTone('sine', 160, 1100 * up, 0.24, 0.22, 0);
+            playNoise(0.22, 0.16, 'bandpass', 500, 3200, 0);
+            break;
+          case 'robotBeep':
+            playTone('square', 540 * up, 540 * up, 0.05, 0.13, 0);
+            playTone('square', 380 * up, 380 * up, 0.06, 0.13, 0.06);
+            playTone('square', 760 * up, 760 * up, 0.08, 0.14, 0.13);
+            break;
+          case 'alienUfo':
+            playTone('sine', 420 * up, 820 * up, 0.08, 0.2, 0);
+            playTone('sine', 820 * up, 360 * up, 0.09, 0.2, 0.08);
+            playTone('sine', 360 * up, 940 * up, 0.1, 0.18, 0.17);
+            break;
+          case 'quantumHit':
+          default:
+            playTone('sine', 140 * down, 36, 0.38, 0.42, 0);
+            playTone('sawtooth', 980 * up, 240, 0.14, 0.16, 0, 2600);
+            playNoise(0.16, 0.2, 'highpass', 1800, 4200, 0.02);
+            break;
+        }
+      }
+
+      // ============================================================
+      // 5. PHYSICS WORLD
+      // ============================================================
+      let bodies = [];
+      let particles = [];
+      let shockwaves = [];
+      let nextBodyId = 1;
+
+      function spawnBody(tier, x, y, vx, vy, popScale) {
+        const r = TIER_RADII[Math.min(tier, TIER_COUNT - 1)];
+        bodies.push({
+          id: nextBodyId++,
+          tier: tier,
+          r: r,
+          mass: r * r,
+          x: x,
+          y: y,
+          vx: vx || 0,
+          vy: vy || 0,
+          angle: (Math.random() - 0.5) * 0.35,
+          angVel: (Math.random() - 0.5) * 1.6,
+          scale: popScale || 1,
+          scaleVel: popScale ? 6.5 : 0,
+          merged: false,
+        });
+      }
+
+      function spawnFromChute() {
+        const inChute = bodies.filter(function (b) { return b.y < NECK_JOIN_Y + 30; }).length;
+        if (inChute >= 4 || bodies.length > 78) return;
+        const jitterX = (Math.random() - 0.5) * 28;
+        spawnBody(0, CX + jitterX, 28, (Math.random() - 0.5) * 24, 155, 1);
+        playDropTick();
+      }
+
+      function spawnConfetti(x, y, tier) {
+        const count = 14 + tier * 6;
+        for (let i = 0; i < count; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          const speed = 110 + Math.random() * (240 + tier * 38);
+          particles.push({
+            x: x,
+            y: y,
+            vx: Math.cos(ang) * speed,
+            vy: Math.sin(ang) * speed - 70,
+            size: 5 + Math.random() * (5 + tier * 0.75),
+            rot: Math.random() * Math.PI * 2,
+            rotVel: (Math.random() - 0.5) * 12,
+            color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+            life: 0.55 + Math.random() * 0.45,
+            maxLife: 0.95,
+          });
+        }
+        if (tier >= 3) {
+          shockwaves.push({
+            x: x,
+            y: y,
+            r: TIER_RADII[tier] * 0.65,
+            maxR: TIER_RADII[tier] * 2.25,
+            alpha: 0.85,
+            color: CONFETTI_COLORS[tier % CONFETTI_COLORS.length],
+          });
+        }
+      }
+
+      function updateStatsUI() {
+        const theme = THEMES[state.themeKey];
+        mergeCounter.textContent = state.merges + (state.merges === 1 ? ' merge' : ' merges');
+        const idx = Math.min(state.highestTier, TIER_COUNT - 1);
+        if (customPngs[idx]) {
+          highestTierLabel.textContent = 'Best: Tier ' + (idx + 1) + ' (PNG)';
+        } else if (theme.type === 'emoji') {
+          highestTierLabel.textContent = 'Best: ' + theme.emojis[idx];
+        } else {
+          highestTierLabel.textContent = 'Best: ' + theme.items[idx].label;
+        }
+        const loadedCount = customPngs.filter(Boolean).length;
+        customPngCount.textContent = loadedCount + '/' + TIER_COUNT + ' PNGs';
+      }
+
+      function renderTierLadder() {
+        const theme = THEMES[state.themeKey];
+        tierLadder.innerHTML = '';
+        for (let i = 0; i < TIER_COUNT; i++) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.dataset.tier = String(i);
+          const itemTitle = theme.type === 'emoji' ? theme.emojis[i] : theme.items[i].label;
+          btn.title = 'Tier ' + (i + 1) + ' (' + itemTitle + ') — Click to upload custom PNG';
+          const hasPng = Boolean(customPngs[i]);
+          const activeRing = hasPng
+            ? 'border-cyan-400/70 bg-cyan-500/10'
+            : (i <= state.highestTier ? 'border-white/25 bg-slate-800/90' : 'border-white/5 bg-slate-900/70 opacity-70');
+          btn.className = 'relative aspect-square rounded-lg border flex flex-col items-center justify-center hover:border-cyan-300 transition overflow-hidden p-0.5 ' + activeRing;
+
+          if (hasPng) {
+            const thumb = document.createElement('img');
+            thumb.src = customPngs[i].url;
+            thumb.alt = 'Tier ' + (i + 1);
+            thumb.className = 'w-full h-full object-contain pointer-events-none';
+            btn.appendChild(thumb);
+          } else if (theme.type === 'emoji') {
+            const span = document.createElement('span');
+            span.textContent = theme.emojis[i];
+            span.className = 'text-base leading-none pointer-events-none';
+            btn.appendChild(span);
+          } else {
+            const item = theme.items[i];
+            const pill = document.createElement('span');
+            pill.textContent = item.short;
+            pill.style.background = 'linear-gradient(135deg,' + item.c1 + ',' + item.c2 + ')';
+            pill.style.color = item.textCol;
+            pill.className = 'w-full h-full rounded-md flex items-center justify-center text-[10px] font-black leading-none pointer-events-none';
+            btn.appendChild(pill);
+          }
+
+          const badge = document.createElement('span');
+          badge.textContent = String(i + 1);
+          badge.className = 'absolute bottom-0 right-0.5 text-[8px] font-mono font-bold text-white/85 drop-shadow pointer-events-none';
+          btn.appendChild(badge);
+
+          tierLadder.appendChild(btn);
+        }
+      }
+
+      function resetWorld() {
+        bodies = [];
+        particles = [];
+        shockwaves = [];
+        state.merges = 0;
+        state.highestTier = 0;
+        state.finalReachedAtMs = null;
+        state.dropTimer = 0.08;
+        updateStatsUI();
+        renderTierLadder();
+        spawnBody(0, CX - 6, 80, 12, 160, 1);
+        spawnBody(0, CX + 8, 250, -10, 210, 1);
+        if (customSongBuffer && state.playing) {
+          startCustomSong(true);
+        }
+      }
+
+      // ============================================================
+      // 6. SUB-STEPPED 2D PHYSICS ENGINE
+      // ============================================================
+      const GRAVITY = 1320;
+      const RESTITUTION = 0.42;
+      const SUBSTEPS = 6;
+
+      function stepPhysics(dt) {
+        const subDt = dt / SUBSTEPS;
+        const maxTier = TIER_COUNT - 1;
+
+        for (let step = 0; step < SUBSTEPS; step++) {
+          for (let i = 0; i < bodies.length; i++) {
+            const b = bodies[i];
+            if (b.merged) continue;
+            b.vy += GRAVITY * subDt;
+            b.x += b.vx * subDt;
+            b.y += b.vy * subDt;
+            b.angle += b.angVel * subDt;
+            b.angVel *= 0.996;
+            b.vx *= 0.9992;
+
+            if (Math.abs(1 - b.scale) > 0.002 || Math.abs(b.scaleVel) > 0.002) {
+              const force = (1 - b.scale) * 260;
+              b.scaleVel = (b.scaleVel + force * subDt) * Math.pow(0.08, subDt);
+              b.scale += b.scaleVel * subDt;
+            } else {
+              b.scale = 1;
+              b.scaleVel = 0;
+            }
+          }
+
+          const mergesToCreate = [];
+          for (let i = 0; i < bodies.length; i++) {
+            const a = bodies[i];
+            if (a.merged) continue;
+            for (let j = i + 1; j < bodies.length; j++) {
+              const b = bodies[j];
+              if (b.merged) continue;
+
+              const dx = b.x - a.x;
+              const dy = b.y - a.y;
+              const minDist = a.r + b.r;
+              const distSq = dx * dx + dy * dy;
+
+              if (distSq < minDist * minDist) {
+                if (a.tier === b.tier && a.tier < maxTier && a.y > NECK_JOIN_Y - 10 && b.y > NECK_JOIN_Y - 10) {
+                  a.merged = true;
+                  b.merged = true;
+                  mergesToCreate.push({
+                    tier: a.tier + 1,
+                    x: (a.x + b.x) * 0.5,
+                    y: (a.y + b.y) * 0.5,
+                    vx: (a.vx + b.vx) * 0.35,
+                    vy: Math.min((a.vy + b.vy) * 0.35, -90),
+                  });
+                  break;
+                }
+
+                const dist = Math.sqrt(distSq) || 0.001;
+                const nx = dx / dist;
+                const ny = dy / dist;
+                const overlap = minDist - dist;
+
+                const totalMass = a.mass + b.mass;
+                const ratioA = b.mass / totalMass;
+                const ratioB = a.mass / totalMass;
+
+                a.x -= nx * overlap * ratioA;
+                a.y -= ny * overlap * ratioA;
+                b.x += nx * overlap * ratioB;
+                b.y += ny * overlap * ratioB;
+
+                const rvx = b.vx - a.vx;
+                const rvy = b.vy - a.vy;
+                const velAlongNormal = rvx * nx + rvy * ny;
+
+                if (velAlongNormal < 0) {
+                  const impulse = -(1 + RESTITUTION) * velAlongNormal / (1 / a.mass + 1 / b.mass);
+                  const ix = impulse * nx;
+                  const iy = impulse * ny;
+                  a.vx -= ix / a.mass;
+                  a.vy -= iy / a.mass;
+                  b.vx += ix / b.mass;
+                  b.vy += iy / b.mass;
+
+                  const tx = -ny;
+                  const ty = nx;
+                  const tangentVel = rvx * tx + rvy * ty;
+                  a.angVel += tangentVel * 0.0018;
+                  b.angVel -= tangentVel * 0.0018;
+                }
+              }
+            }
+          }
+
+          if (mergesToCreate.length > 0) {
+            bodies = bodies.filter(function (b) { return !b.merged; });
+            for (let m = 0; m < mergesToCreate.length; m++) {
+              const mc = mergesToCreate[m];
+              spawnBody(mc.tier, mc.x, mc.y, mc.vx, mc.vy, 0.45);
+              spawnConfetti(mc.x, mc.y, mc.tier);
+              playMergeSound(mc.tier);
+              state.merges++;
+              if (mc.tier > state.highestTier) {
+                state.highestTier = mc.tier;
+                renderTierLadder();
+              }
+              if (mc.tier === maxTier && state.recording && state.finalReachedAtMs === null) {
+                state.finalReachedAtMs = performance.now();
+                statusToast.textContent = 'Final Tier reached! Recording 3s celebration before saving...';
+              }
+            }
+            updateStatsUI();
+          }
+
+          for (let i = 0; i < bodies.length; i++) {
+            const b = bodies[i];
+            if (b.y < NECK_JOIN_Y + 6) {
+              const leftWall = CX - NECK_HALF_W + b.r;
+              const rightWall = CX + NECK_HALF_W - b.r;
+              if (b.x < leftWall) {
+                b.x = leftWall;
+                b.vx = Math.abs(b.vx) * RESTITUTION;
+              } else if (b.x > rightWall) {
+                b.x = rightWall;
+                b.vx = -Math.abs(b.vx) * RESTITUTION;
+              }
+            } else {
+              const dx = b.x - CX;
+              const dy = b.y - CY;
+              const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+              const maxR = ARENA_R - b.r;
+
+              const inTopOpening = dy < 0 && Math.abs(dx) < NECK_HALF_W - b.r * 0.4 && b.tier === 0;
+              if (dist > maxR && !inTopOpening) {
+                const nx = dx / dist;
+                const ny = dy / dist;
+                b.x = CX + nx * maxR;
+                b.y = CY + ny * maxR;
+
+                const vn = b.vx * nx + b.vy * ny;
+                if (vn > 0) {
+                  b.vx -= (1 + RESTITUTION) * vn * nx;
+                  b.vy -= (1 + RESTITUTION) * vn * ny;
+                  const tx = -ny;
+                  const ty = nx;
+                  const vt = b.vx * tx + b.vy * ty;
+                  b.angVel = vt / Math.max(b.r, 12);
+                }
+              }
+            }
+          }
+        }
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const p = particles[i];
+          p.vy += 620 * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.rot += p.rotVel * dt;
+          p.life -= dt;
+          if (p.life <= 0) particles.splice(i, 1);
+        }
+
+        for (let i = shockwaves.length - 1; i >= 0; i--) {
+          const sw = shockwaves[i];
+          sw.r += (sw.maxR - sw.r) * Math.min(1, dt * 11);
+          sw.alpha -= dt * 2.6;
+          if (sw.alpha <= 0) shockwaves.splice(i, 1);
+        }
+      }
+
+      // ============================================================
+      // 7. CANVAS RENDERING
+      // ============================================================
+      function drawArena() {
+        ctx.fillStyle = '#121216';
+        ctx.fillRect(0, 0, W, H);
+
+        const bgGlow = ctx.createRadialGradient(CX, CY, ARENA_R * 0.2, CX, CY, ARENA_R * 1.25);
+        bgGlow.addColorStop(0, 'rgba(34, 211, 238, 0.045)');
+        bgGlow.addColorStop(1, 'rgba(18, 18, 22, 0)');
+        ctx.fillStyle = bgGlow;
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.save();
+        ctx.lineWidth = 3.5;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = 'rgba(203, 213, 225, 0.45)';
+        ctx.beginPath();
+        ctx.moveTo(CX - NECK_HALF_W, NECK_TOP_Y);
+        ctx.lineTo(CX - NECK_HALF_W, NECK_JOIN_Y);
+        ctx.moveTo(CX + NECK_HALF_W, NECK_TOP_Y);
+        ctx.lineTo(CX + NECK_HALF_W, NECK_JOIN_Y);
+        ctx.stroke();
+
+        const startAng = -Math.PI / 2 + NECK_JOIN_ANGLE;
+        const endAng = Math.PI * 1.5 - NECK_JOIN_ANGLE;
+        const grad = ctx.createLinearGradient(
+          CX + Math.cos(state.rainbowPhase) * ARENA_R,
+          CY + Math.sin(state.rainbowPhase) * ARENA_R,
+          CX - Math.cos(state.rainbowPhase) * ARENA_R,
+          CY - Math.sin(state.rainbowPhase) * ARENA_R
+        );
+        grad.addColorStop(0.0, '#ff3b30');
+        grad.addColorStop(0.18, '#ff9500');
+        grad.addColorStop(0.36, '#ffd60a');
+        grad.addColorStop(0.54, '#34c759');
+        grad.addColorStop(0.72, '#00c7be');
+        grad.addColorStop(0.86, '#5856d6');
+        grad.addColorStop(1.0, '#ff2d55');
+
+        ctx.shadowColor = 'rgba(0, 240, 255, 0.35)';
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = 4.5;
+        ctx.strokeStyle = grad;
+        ctx.beginPath();
+        ctx.arc(CX, CY, ARENA_R, startAng, endAng);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawEntities() {
+        const theme = THEMES[state.themeKey];
+
+        for (let i = 0; i < shockwaves.length; i++) {
+          const sw = shockwaves[i];
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, sw.alpha);
+          ctx.strokeStyle = sw.color;
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        const sorted = bodies.slice().sort(function (a, b) { return a.tier - b.tier; });
+        for (let i = 0; i < sorted.length; i++) {
+          const b = sorted[i];
+          const idx = Math.min(b.tier, TIER_COUNT - 1);
+          const customSlot = customPngs[idx];
+          let sprite;
+          if (customSlot) {
+            sprite = customSlot.spriteCanvas;
+          } else if (theme.type === 'emoji') {
+            sprite = getEmojiSprite(theme.emojis[idx], b.r);
+          } else {
+            sprite = getBadgeSprite(theme.items[idx], b.r);
+          }
+
+          ctx.save();
+          ctx.translate(b.x, b.y);
+          ctx.rotate(b.angle);
+          ctx.scale(b.scale, b.scale);
+          ctx.drawImage(sprite, -sprite.width / 2, -sprite.height / 2);
+          ctx.restore();
+        }
+
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 0.35));
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.moveTo(0, -p.size * 0.65);
+          ctx.lineTo(p.size * 0.6, p.size * 0.55);
+          ctx.lineTo(-p.size * 0.6, p.size * 0.55);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawCaption() {
+        const text = (state.caption || '').trim();
+        if (!text) return;
+
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = '800 34px "Inter", system-ui, -apple-system, sans-serif';
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+        ctx.shadowBlur = 10;
+        ctx.fillText(text, CX, CY + ARENA_R + 95, W - 72);
+        ctx.restore();
+      }
+
+      // ============================================================
+      // 8. DUAL-FORMAT RECORDER:
+      //    A) MOBILE & FB REELS MP4 (WebCodecs H.264 Baseline + AAC + mp4-muxer fastStart)
+      //    B) WEBM (MediaRecorder VP9/VP8 + Opus)
+      // ============================================================
+      const MP4_FPS = 30; // 30 FPS is rock-solid on mobile phones & Facebook Reels
+      let mp4Muxer = null;
+      let mp4Target = null;
+      let videoEncoder = null;
+      let audioEncoder = null;
+      let audioCaptureNode = null;
+      let audioMuteSink = null;
+      let mp4FrameIndex = 0;
+      let mp4LastFrameCaptureMs = 0;
+      let mp4AudioSampleCursor = 0;
+      let mp4HasAudio = false;
+      let mp4Finalizing = false;
+
+      let mediaRecorder = null;
+      let recordedChunks = [];
+
+      function updateFormatUI() {
+        const isMp4 = state.exportFormat === 'mp4';
+        fmtMp4Btn.className = isMp4
+          ? 'px-2.5 py-2 rounded-xl border border-cyan-400 bg-cyan-500/20 text-cyan-200 text-xs font-bold transition flex flex-col items-center'
+          : 'px-2.5 py-2 rounded-xl border border-white/10 bg-slate-950 text-slate-300 hover:border-white/25 text-xs font-bold transition flex flex-col items-center';
+        fmtWebmBtn.className = !isMp4
+          ? 'px-2.5 py-2 rounded-xl border border-fuchsia-400 bg-fuchsia-500/20 text-fuchsia-200 text-xs font-bold transition flex flex-col items-center'
+          : 'px-2.5 py-2 rounded-xl border border-white/10 bg-slate-950 text-slate-300 hover:border-white/25 text-xs font-bold transition flex flex-col items-center';
+
+        if (isMp4) {
+          const hasWebCodecs = typeof VideoEncoder !== 'undefined' && typeof Mp4Muxer !== 'undefined';
+          formatSupportBadge.textContent = hasWebCodecs ? 'H.264 + AAC (fastStart)' : 'Native MP4';
+          formatSupportBadge.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-400/30';
+          if (!state.recording) recordBtnText.textContent = 'Record Mobile MP4 + Audio';
+        } else {
+          formatSupportBadge.textContent = 'VP9/VP8 + Opus';
+          formatSupportBadge.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-400/30';
+          if (!state.recording) recordBtnText.textContent = 'Record WebM + Audio';
+        }
+      }
+
+      function saveRecordedBlob(blob, ext) {
+        if (state.lastBlobUrl) URL.revokeObjectURL(state.lastBlobUrl);
+        state.lastBlobUrl = URL.createObjectURL(blob);
+
+        const hasCustom = customPngs.some(Boolean);
+        const prefix = hasCustom ? 'custom-merge-' : (state.themeKey + '-merge-');
+        const durTag = state.recordMode === 'untilFinal' ? 'full' : (state.recordDuration + 's');
+        const filename = prefix + durTag + '.' + ext;
+
+        downloadLink.href = state.lastBlobUrl;
+        downloadLink.download = filename;
+        downloadLink.textContent = 'Download ' + filename;
+        downloadLink.classList.remove('hidden');
+
+        const a = document.createElement('a');
+        a.href = state.lastBlobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        const mb = (blob.size / (1024 * 1024)).toFixed(2);
+        statusToast.textContent = 'Saved ' + filename + ' (' + mb + ' MB) — ready for Phone & Facebook Reels!';
+      }
+
+      function setRecordingLocks(locked) {
+        recordModeSelect.disabled = locked;
+        customDurationInput.disabled = locked;
+        fmtMp4Btn.disabled = locked;
+        fmtWebmBtn.disabled = locked;
+      }
+
+      async function pickSupportedH264Config() {
+        // Baseline / Constrained Baseline / Main profiles for universal Android, iOS & FB Reels playback
+        const codecs = ['avc1.42001f', 'avc1.42E01F', 'avc1.4d001f', 'avc1.64001f'];
+        for (let i = 0; i < codecs.length; i++) {
+          const cfg = {
+            codec: codecs[i],
+            width: W,
+            height: H,
+            bitrate: 4500000,
+            framerate: MP4_FPS,
+            avc: { format: 'avc' },
+          };
+          try {
+            const res = await VideoEncoder.isConfigSupported(cfg);
+            if (res && res.supported) return cfg;
+          } catch (e) {}
+        }
+        return null;
+      }
+
+      async function pickSupportedAacConfig(sampleRate) {
+        if (typeof AudioEncoder === 'undefined' || typeof AudioData === 'undefined') return null;
+        const cfg = {
+          codec: 'mp4a.40.2',
+          numberOfChannels: 2,
+          sampleRate: sampleRate,
+          bitrate: 128000,
+        };
+        try {
+          const res = await AudioEncoder.isConfigSupported(cfg);
+          if (res && res.supported) return cfg;
+        } catch (e) {}
+        return null;
+      }
+
+      async function startWebCodecsMp4() {
+        const videoCfg = await pickSupportedH264Config();
+        if (!videoCfg) return false;
+
+        const sr = audioCtx ? audioCtx.sampleRate : 48000;
+        const audioCfg = audioCtx ? await pickSupportedAacConfig(sr) : null;
+        mp4HasAudio = Boolean(audioCfg);
+
+        mp4Target = new Mp4Muxer.ArrayBufferTarget();
+        const muxerOpts = {
+          target: mp4Target,
+          video: {
+            codec: 'avc',
+            width: W,
+            height: H,
+          },
+          fastStart: 'in-memory',
+          firstTimestampBehavior: 'offset',
+        };
+        if (mp4HasAudio) {
+          muxerOpts.audio = {
+            codec: 'aac',
+            numberOfChannels: 2,
+            sampleRate: sr,
+          };
+        }
+
+        mp4Muxer = new Mp4Muxer.Muxer(muxerOpts);
+
+        videoEncoder = new VideoEncoder({
+          output: function (chunk, meta) {
+            if (mp4Muxer) mp4Muxer.addVideoChunk(chunk, meta);
+          },
+          error: function (err) {
+            statusToast.textContent = 'Video encoder error: ' + (err && err.message ? err.message : 'failed');
+          },
+        });
+        videoEncoder.configure(videoCfg);
+
+        if (mp4HasAudio && audioCtx) {
+          audioEncoder = new AudioEncoder({
+            output: function (chunk, meta) {
+              if (mp4Muxer) mp4Muxer.addAudioChunk(chunk, meta);
+            },
+            error: function (err) {
+              statusToast.textContent = 'Audio encoder error: ' + (err && err.message ? err.message : 'failed');
+            },
+          });
+          audioEncoder.configure(audioCfg);
+
+          mp4AudioSampleCursor = 0;
+          audioCaptureNode = audioCtx.createScriptProcessor(2048, 2, 2);
+          audioMuteSink = audioCtx.createGain();
+          audioMuteSink.gain.value = 0;
+
+          audioCaptureNode.onaudioprocess = function (ev) {
+            if (!state.recording || mp4Finalizing || !audioEncoder || audioEncoder.state !== 'configured') return;
+            const inBuf = ev.inputBuffer;
+            const numFrames = inBuf.length;
+            const ch0 = inBuf.getChannelData(0);
+            const ch1 = inBuf.numberOfChannels > 1 ? inBuf.getChannelData(1) : ch0;
+
+            const planar = new Float32Array(numFrames * 2);
+            planar.set(ch0, 0);
+            planar.set(ch1, numFrames);
+
+            const tsUs = Math.round((mp4AudioSampleCursor / sr) * 1000000);
+            mp4AudioSampleCursor += numFrames;
+
+            try {
+              const audioData = new AudioData({
+                format: 'f32-planar',
+                sampleRate: sr,
+                numberOfFrames: numFrames,
+                numberOfChannels: 2,
+                timestamp: tsUs,
+                data: planar,
+              });
+              audioEncoder.encode(audioData);
+              audioData.close();
+            } catch (e) {}
+          };
+
+          masterGain.connect(audioCaptureNode);
+          audioCaptureNode.connect(audioMuteSink);
+          audioMuteSink.connect(audioCtx.destination);
+        }
+
+        mp4FrameIndex = 0;
+        mp4LastFrameCaptureMs = 0;
+        mp4Finalizing = false;
+        state.recordEngine = 'webcodecs-mp4';
+        return true;
+      }
+
+      async function finalizeWebCodecsMp4() {
+        if (mp4Finalizing) return;
+        mp4Finalizing = true;
+        statusToast.textContent = 'Finalizing mobile-compatible MP4 (writing moov fastStart)...';
+
+        try {
+          if (audioCaptureNode) {
+            try { masterGain.disconnect(audioCaptureNode); } catch (e) {}
+            try { audioCaptureNode.disconnect(); } catch (e) {}
+            audioCaptureNode.onaudioprocess = null;
+            audioCaptureNode = null;
+          }
+          if (audioMuteSink) {
+            try { audioMuteSink.disconnect(); } catch (e) {}
+            audioMuteSink = null;
+          }
+          if (videoEncoder && videoEncoder.state === 'configured') {
+            await videoEncoder.flush();
+            videoEncoder.close();
+          }
+          if (audioEncoder && audioEncoder.state === 'configured') {
+            await audioEncoder.flush();
+            audioEncoder.close();
+          }
+          if (mp4Muxer && mp4Target) {
+            mp4Muxer.finalize();
+            const blob = new Blob([mp4Target.buffer], { type: 'video/mp4' });
+            saveRecordedBlob(blob, 'mp4');
+          }
+        } catch (err) {
+          statusToast.textContent = 'MP4 finalize error: ' + (err && err.message ? err.message : 'failed');
+        } finally {
+          videoEncoder = null;
+          audioEncoder = null;
+          mp4Muxer = null;
+          mp4Target = null;
+          mp4Finalizing = false;
+        }
+      }
+
+      function pickMediaRecorderMime(wantMp4) {
+        if (typeof MediaRecorder === 'undefined') return null;
+        const list = wantMp4
+          ? ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4']
+          : ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm;codecs=vp9', 'video/webm'];
+        for (let i = 0; i < list.length; i++) {
+          if (MediaRecorder.isTypeSupported(list[i])) return list[i];
+        }
+        return null;
+      }
+
+      function startMediaRecorderFlow(wantMp4) {
+        const mimeType = pickMediaRecorderMime(wantMp4);
+        if (!mimeType || typeof canvas.captureStream !== 'function') {
+          statusToast.textContent = wantMp4
+            ? 'This browser cannot encode MP4 natively. Switch to WebM or open in Chrome/Safari.'
+            : 'WebM MediaRecorder is not supported in this browser. Switch to MP4.';
+          return false;
+        }
+
+        const fps = wantMp4 ? 30 : 60;
+        const videoStream = canvas.captureStream(fps);
+        const tracks = videoStream.getVideoTracks().slice();
+        if (mediaAudioDest && mediaAudioDest.stream) {
+          const audioTracks = mediaAudioDest.stream.getAudioTracks();
+          for (let i = 0; i < audioTracks.length; i++) tracks.push(audioTracks[i]);
+        }
+        const combinedStream = new MediaStream(tracks);
+
+        recordedChunks = [];
+        try {
+          mediaRecorder = new MediaRecorder(combinedStream, {
+            mimeType: mimeType,
+            videoBitsPerSecond: wantMp4 ? 5000000 : 8000000,
+          });
+        } catch (err) {
+          statusToast.textContent = 'Could not start recorder: ' + (err && err.message ? err.message : 'unsupported');
+          return false;
+        }
+
+        mediaRecorder.ondataavailable = function (e) {
+          if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = function () {
+          if (recordedChunks.length === 0) {
+            statusToast.textContent = 'No video frames captured.';
+            return;
+          }
+          const ext = wantMp4 ? 'mp4' : 'webm';
+          const blob = new Blob(recordedChunks, { type: mimeType });
+          saveRecordedBlob(blob, ext);
+        };
+
+        state.recordEngine = wantMp4 ? 'mediarecorder-mp4' : 'mediarecorder-webm';
+        mediaRecorder.start(250);
+        return true;
+      }
+
+      async function stopRecording(early) {
+        if (!state.recording) return;
+        state.recording = false;
+        recBadge.classList.add('hidden');
+        recProgressWrap.classList.add('hidden');
+        setRecordingLocks(false);
+        updateFormatUI();
+
+        if (state.recordEngine === 'webcodecs-mp4') {
+          await finalizeWebCodecsMp4();
+        } else if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          if (early) statusToast.textContent = 'Stopped early. Finalizing video...';
+          mediaRecorder.stop();
+        }
+      }
+
+      async function startRecording() {
+        if (state.recording) {
+          await stopRecording(true);
+          return;
+        }
+
+        ensureAudio();
+        state.recordMode = recordModeSelect.value;
+        const parsedSec = parseInt(customDurationInput.value, 10);
+        state.recordDuration = Math.max(5, Math.min(300, isNaN(parsedSec) ? 60 : parsedSec));
+        customDurationInput.value = String(state.recordDuration);
+        state.finalReachedAtMs = null;
+
+        state.playing = true;
+        playPauseBtn.textContent = '❚❚ Pause';
+        resetWorld();
+
+        let started = false;
+        if (state.exportFormat === 'mp4') {
+          // Prefer WebCodecs H.264 Baseline + AAC + mp4-muxer (fastStart) for 100% phone & FB Reels compatibility
+          if (typeof VideoEncoder !== 'undefined' && typeof Mp4Muxer !== 'undefined') {
+            started = await startWebCodecsMp4();
+          }
+          if (!started) {
+            started = startMediaRecorderFlow(true);
+          }
+        } else {
+          started = startMediaRecorderFlow(false);
+        }
+
+        if (!started) return;
+
+        state.recording = true;
+        state.recordStartMs = performance.now();
+        setRecordingLocks(true);
+        recBadge.classList.remove('hidden');
+        recProgressWrap.classList.remove('hidden');
+        recProgressBar.style.width = '0%';
+        recordBtnText.textContent = 'Stop & Save Now';
+
+        const modeText = state.recordMode === 'untilFinal'
+          ? 'until Final Tier (+3s, max ' + state.recordDuration + 's)'
+          : (state.recordDuration + 's');
+        const fmtText = state.recordEngine === 'webcodecs-mp4'
+          ? ('Mobile MP4 H.264' + (mp4HasAudio ? '+AAC' : ' (no AAC)'))
+          : (state.exportFormat === 'mp4' ? 'Native MP4' : 'WebM');
+        statusToast.textContent = 'Recording ' + fmtText + ' (' + modeText + ')...';
+      }
+
+      function captureWebCodecsVideoFrame(now) {
+        if (!videoEncoder || videoEncoder.state !== 'configured' || mp4Finalizing) return;
+        const frameIntervalMs = 1000 / MP4_FPS;
+        if (mp4LastFrameCaptureMs && (now - mp4LastFrameCaptureMs) < frameIntervalMs * 0.92) {
+          return;
+        }
+        // Prevent memory buildup on slower phones
+        if (videoEncoder.encodeQueueSize > 8) return;
+
+        mp4LastFrameCaptureMs = now;
+        const tsUs = Math.round(mp4FrameIndex * (1000000 / MP4_FPS));
+        const durUs = Math.round(1000000 / MP4_FPS);
+        const isKey = (mp4FrameIndex % (MP4_FPS * 2)) === 0; // Keyframe every 2 seconds (FB Reels standard)
+        mp4FrameIndex++;
+
+        try {
+          const frame = new VideoFrame(canvas, { timestamp: tsUs, duration: durUs });
+          videoEncoder.encode(frame, { keyFrame: isKey });
+          frame.close();
+        } catch (e) {}
+      }
+
+      // ============================================================
+      // 9. EVENT LISTENERS
+      // ============================================================
+      audioUnlockBanner.addEventListener('click', function () {
+        ensureAudio();
+        if (customSongBuffer && !customSongSource && state.playing) {
+          startCustomSong(false);
+        } else {
+          playMergeSound(2);
+        }
+      });
+
+      canvas.addEventListener('click', function () {
+        ensureAudio();
+        if (customSongBuffer && !customSongSource && state.playing) {
+          startCustomSong(false);
+        }
+        spawnFromChute();
+      });
+
+      tierLadder.addEventListener('click', function (e) {
+        const btn = e.target.closest('button[data-tier]');
+        if (!btn) return;
+        state.pendingPngTier = parseInt(btn.dataset.tier, 10) || 0;
+        singlePngInput.value = '';
+        singlePngInput.click();
+      });
+
+      singlePngInput.addEventListener('change', function () {
+        if (singlePngInput.files && singlePngInput.files[0]) {
+          loadCustomPngForTier(state.pendingPngTier, singlePngInput.files[0]);
+        }
+      });
+
+      bulkPngBtn.addEventListener('click', function () {
+        bulkPngInput.value = '';
+        bulkPngInput.click();
+      });
+
+      bulkPngInput.addEventListener('change', function () {
+        const files = Array.from(bulkPngInput.files || []).slice(0, TIER_COUNT);
+        if (files.length === 0) return;
+        for (let i = 0; i < files.length; i++) {
+          loadCustomPngForTier(i, files[i]);
+        }
+        statusToast.textContent = 'Loading ' + files.length + ' custom PNG(s) into Tiers 1–' + files.length + '...';
+      });
+
+      clearPngsBtn.addEventListener('click', function () {
+        for (let i = 0; i < TIER_COUNT; i++) {
+          if (customPngs[i] && customPngs[i].url) URL.revokeObjectURL(customPngs[i].url);
+          customPngs[i] = null;
+        }
+        renderTierLadder();
+        updateStatsUI();
+        statusToast.textContent = 'Cleared custom PNGs. Using active template pack.';
+      });
+
+      uploadSongBtn.addEventListener('click', function () {
+        ensureAudio();
+        songFileInput.value = '';
+        songFileInput.click();
+      });
+
+      songFileInput.addEventListener('change', function () {
+        if (songFileInput.files && songFileInput.files[0]) {
+          loadAudioFile(songFileInput.files[0], 'song');
+        }
+      });
+
+      clearSongBtn.addEventListener('click', function () {
+        stopCustomSongSource(false);
+        customSongBuffer = null;
+        customSongOffset = 0;
+        songNameLabel.textContent = 'No song';
+        songNameLabel.classList.remove('text-fuchsia-300');
+        songNameLabel.classList.add('text-slate-400');
+        statusToast.textContent = 'Cleared custom song.';
+      });
+
+      songVolumeSlider.addEventListener('input', function () {
+        state.songVolume = parseFloat(songVolumeSlider.value);
+        songVolumeVal.textContent = Math.round(state.songVolume * 100) + '%';
+        if (musicGain && audioCtx) {
+          musicGain.gain.setTargetAtTime(state.songVolume, audioCtx.currentTime, 0.02);
+        }
+      });
+
+      uploadSfxBtn.addEventListener('click', function () {
+        ensureAudio();
+        sfxFileInput.value = '';
+        sfxFileInput.click();
+      });
+
+      sfxFileInput.addEventListener('change', function () {
+        if (sfxFileInput.files && sfxFileInput.files[0]) {
+          loadAudioFile(sfxFileInput.files[0], 'sfx');
+        }
+      });
+
+      clearSfxBtn.addEventListener('click', function () {
+        customSfxBuffer = null;
+        uploadSfxBtn.textContent = '🎙️ Upload Custom Merge SFX';
+        clearSfxBtn.classList.add('hidden');
+        statusToast.textContent = 'Reverted to 50 built-in SFX library.';
+      });
+
+      playPauseBtn.addEventListener('click', function () {
+        ensureAudio();
+        state.playing = !state.playing;
+        playPauseBtn.textContent = state.playing ? '❚❚ Pause' : '▶ Play';
+        if (customSongBuffer) {
+          if (state.playing) startCustomSong(false);
+          else stopCustomSongSource(true);
+        }
+      });
+
+      dropNowBtn.addEventListener('click', function () {
+        ensureAudio();
+        spawnFromChute();
+      });
+
+      resetBtn.addEventListener('click', function () {
+        ensureAudio();
+        resetWorld();
+      });
+
+      themeSelect.addEventListener('change', function () {
+        ensureAudio();
+        state.themeKey = themeSelect.value;
+        state.caption = THEMES[state.themeKey].caption;
+        captionInput.value = state.caption;
+        resetWorld();
+      });
+
+      audioStyleSelect.addEventListener('change', function () {
+        ensureAudio();
+        state.audioStyle = audioStyleSelect.value;
+        playMergeSound(3);
+      });
+
+      testSfxBtn.addEventListener('click', function () {
+        ensureAudio();
+        playMergeSound(3);
+      });
+
+      randomSfxBtn.addEventListener('click', function () {
+        ensureAudio();
+        const pick = SFX_CATALOG[Math.floor(Math.random() * SFX_CATALOG.length)];
+        state.audioStyle = pick.id;
+        audioStyleSelect.value = pick.id;
+        playMergeSound(3);
+        statusToast.textContent = 'Selected SFX: ' + pick.name;
+      });
+
+      muteBtn.addEventListener('click', function () {
+        ensureAudio();
+        state.muted = !state.muted;
+        if (masterGain && audioCtx) {
+          masterGain.gain.setTargetAtTime(state.muted ? 0 : 0.85, audioCtx.currentTime, 0.02);
+        }
+        muteBtn.textContent = state.muted ? '🔇 Muted' : '🔊 Sound On';
+        muteBtn.classList.toggle('text-emerald-300', !state.muted);
+        muteBtn.classList.toggle('text-rose-400', state.muted);
+      });
+
+      dropRateSlider.addEventListener('input', function () {
+        state.dropInterval = parseFloat(dropRateSlider.value) || 0.38;
+        dropRateVal.textContent = state.dropInterval.toFixed(2) + 's';
+      });
+
+      captionInput.addEventListener('input', function () {
+        state.caption = captionInput.value;
+      });
+
+      fmtMp4Btn.addEventListener('click', function () {
+        if (state.recording) return;
+        state.exportFormat = 'mp4';
+        updateFormatUI();
+      });
+
+      fmtWebmBtn.addEventListener('click', function () {
+        if (state.recording) return;
+        state.exportFormat = 'webm';
+        updateFormatUI();
+      });
+
+      durationPresets.addEventListener('click', function (e) {
+        const btn = e.target.closest('button[data-sec]');
+        if (!btn) return;
+        customDurationInput.value = btn.dataset.sec;
+        recordModeSelect.value = 'custom';
+      });
+
+      recordBtn.addEventListener('click', function () {
+        startRecording();
+      });
+
+      // ============================================================
+      // 10. MAIN LOOP
+      // ============================================================
+      function loop(now) {
+        requestAnimationFrame(loop);
+
+        if (!state.lastTs) state.lastTs = now;
+        const dt = Math.min((now - state.lastTs) / 1000, 0.05);
+        state.lastTs = now;
+
+        if (state.playing) {
+          state.rainbowPhase += dt * 0.9;
+          state.dropTimer -= dt;
+          if (state.dropTimer <= 0) {
+            spawnFromChute();
+            state.dropTimer = state.dropInterval;
+          }
+          stepPhysics(dt);
+        }
+
+        drawArena();
+        drawEntities();
+        drawCaption();
+
+        if (state.recording) {
+          if (state.recordEngine === 'webcodecs-mp4') {
+            captureWebCodecsVideoFrame(now);
+          }
+
+          const elapsed = (now - state.recordStartMs) / 1000;
+          const pct = Math.min(100, (elapsed / state.recordDuration) * 100);
+          recProgressBar.style.width = pct.toFixed(1) + '%';
+
+          if (state.recordMode === 'untilFinal') {
+            recBadgeText.textContent = 'REC ' + elapsed.toFixed(1) + 's (T' + (state.highestTier + 1) + '/8)';
+            if (state.finalReachedAtMs !== null && (now - state.finalReachedAtMs) >= 3000) {
+              stopRecording(false);
+            } else if (elapsed >= state.recordDuration) {
+              stopRecording(false);
+            }
+          } else {
+            recBadgeText.textContent = 'REC ' + elapsed.toFixed(1).padStart(4, '0') + 's / ' + state.recordDuration + 's';
+            if (elapsed >= state.recordDuration) {
+              stopRecording(false);
+            }
+          }
+        }
+      }
+
+      // Initialize
+      updateFormatUI();
+      resetWorld();
+      requestAnimationFrame(loop);
+    })();
+  </script>
+</body>
+</html>
